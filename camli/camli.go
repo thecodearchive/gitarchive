@@ -16,7 +16,6 @@ import (
 
 	"camlistore.org/pkg/blob"
 	"camlistore.org/pkg/client"
-	"camlistore.org/pkg/cmdmain"
 	"camlistore.org/pkg/httputil"
 	"camlistore.org/pkg/osutil"
 	"camlistore.org/pkg/schema"
@@ -24,8 +23,6 @@ import (
 
 	"gopkg.in/src-d/go-git.v3/core"
 )
-
-var Verbose = false
 
 func init() {
 	osutil.AddSecretRingFlag()
@@ -42,16 +39,8 @@ type Uploader struct {
 func NewUploader() *Uploader {
 	c := client.NewOrFail(
 		client.OptionTransportConfig(
-			&client.TransportConfig{
-				Verbose: Verbose,
-			}))
+			&client.TransportConfig{}))
 	stats := c.HTTPStats()
-
-	if Verbose {
-		c.SetLogger(log.New(cmdmain.Stderr, "", log.LstdFlags))
-	} else {
-		c.SetLogger(nil)
-	}
 
 	return &Uploader{
 		c:     c,
@@ -205,8 +194,19 @@ func (u *Uploader) GetRepo(name string) (*Repo, error) {
 	return &repo, err
 }
 
-// TODO:
-//   - query permanodes for title==name to check if the repo exists
-//     - if yes, upload and set contentattr
-//     - if no, upload and create a new permanode, set title & contentattr
-//   - root nodes?
+func (u *Uploader) New() (Object, error) {
+	// Lazy, just used the core in memory objects for now.
+	return &core.Object{}, nil
+}
+
+func (u *Uploader) Set(obj core.Object) (Hash, error) {
+	return obj.Hash(), u.PutObject(obj)
+}
+
+func (u *Uploader) Get(core.Hash) (Object, error) {
+	panic("Uploader.Get called")
+}
+
+func (u *Uploader) Iter(core.ObjectType) core.ObjectIter {
+	panic("Uploader.Iter called")
+}
