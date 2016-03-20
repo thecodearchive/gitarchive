@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"strconv"
 	"time"
 
 	"camlistore.org/pkg/blob"
@@ -20,6 +21,8 @@ import (
 	"camlistore.org/pkg/osutil"
 	"camlistore.org/pkg/schema"
 	"camlistore.org/pkg/search"
+
+	"gopkg.in/src-d/go-git.v3/core"
 )
 
 var Verbose = false
@@ -57,24 +60,27 @@ func NewUploader() *Uploader {
 }
 
 // PutObject uploads a blob to Camlistore.
-func (u *Uploader) PutObject(obj []byte) error {
-	h := blob.NewHash()
-	size, err := io.Copy(h, bytes.NewReader(obj))
-	if err != nil {
-		return err
-	}
+func (u *Uploader) PutObject(obj core.Object) error {
+	sum := [20]byte(obj.Hash())
+	head := obj.Type().Bytes()
+	head = append(head, ' ')
+	head = strconv.AppendInt(head, obj.Size(), 10)
+	head = append(head, 0)
+	r := io.MultiReader(bytes.NewReader(head), obj.Reader())
+
 	result, err := u.c.Upload(&client.UploadHandle{
-		BlobRef:  blob.RefFromHash(h),
-		Size:     uint32(size),
-		Contents: bytes.NewReader(obj),
+		BlobRef:  blob.MustParse(fmt.Sprintf("sha1-%x", sum)),
+		Size:     uint32(obj.Size()) + uint32(len(head)),
+		Contents: r,
 	})
 	if err != nil {
+		log.Printf("couldn't store object: %x", sum)
 		return err
 	}
 	if result.Skipped {
-		log.Printf("object %x already on the server", h.Sum(nil))
+		log.Printf("object %x already on the server", sum)
 	} else {
-		log.Printf("stored object: %x", h.Sum(nil))
+		log.Printf("stored object: %x", sum)
 	}
 	return nil
 }
