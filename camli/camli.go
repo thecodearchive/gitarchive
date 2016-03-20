@@ -123,7 +123,7 @@ func (u *Uploader) PutRepo(r *Repo) error {
 	log.Printf("stored repo: %s on %s", r.Name, reporef.BlobRef)
 
 	// Update or create its permanode.
-	pn, err := u.findRepo(r.Name)
+	pn, _, err := u.findRepo(r.Name)
 	if err != nil {
 		// Create a new one.
 		res, err := u.c.UploadNewPermanode()
@@ -161,7 +161,7 @@ func (u *Uploader) PutRepo(r *Repo) error {
 	return err
 }
 
-func (u *Uploader) findRepo(name string) (blob.Ref, error) {
+func (u *Uploader) findRepo(name string) (blob.Ref, search.MetaMap, error) {
 	res, err := u.c.Query(&search.SearchQuery{
 		Limit: 1,
 		Constraint: &search.Constraint{
@@ -169,22 +169,27 @@ func (u *Uploader) findRepo(name string) (blob.Ref, error) {
 				Attr: "title", Value: name,
 			},
 		},
+		Describe: &search.DescribeRequest{},
 	})
 	if err != nil {
-		return blob.Ref{}, err
+		return blob.Ref{}, nil, err
 	}
 	if len(res.Blobs) < 1 {
-		return blob.Ref{}, errors.New("repo not found")
+		return blob.Ref{}, nil, errors.New("repo not found")
 	}
-	return res.Blobs[0].Blob, nil
+	return res.Blobs[0].Blob, res.Describe.Meta, nil
 }
 
 // GetRepo querys for a repo permanode with name, and returns its
 // Repo object.
 func (u *Uploader) GetRepo(name string) (*Repo, error) {
-	ref, err := u.findRepo(name)
+	pn, meta, err := u.findRepo(name)
 	if err != nil {
 		return nil, err
+	}
+	ref, ok := meta[pn.String()].ContentRef()
+	if !ok {
+		return nil, errors.New("couldn't find repo data (but there's a permanode)")
 	}
 	r, _, err := u.c.Fetch(ref)
 	if err != nil {
