@@ -16,7 +16,7 @@ func main() {
 
 	uploader := camli.NewUploader()
 
-	objs, refs, caps, err := git.Clone(os.Args[1])
+	objs, refs, caps, err := git.Clone(url, os.Stderr)
 	if err != nil {
 		log.Fatal(err)
 	}

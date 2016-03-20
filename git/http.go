@@ -3,6 +3,7 @@ package git
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -10,7 +11,7 @@ import (
 	"gopkg.in/src-d/go-git.v3/core"
 )
 
-func Clone(gitURL string) (objs map[core.Hash]core.Object, refs map[string]string, caps []string, err error) {
+func Clone(gitURL string, msgW io.Writer) (objs map[core.Hash]core.Object, refs map[string]string, caps []string, err error) {
 	resp, err := http.Get(gitURL + "/info/refs?service=git-upload-pack")
 	if err != nil {
 		return nil, nil, nil, err
@@ -40,7 +41,7 @@ func Clone(gitURL string) (objs map[core.Hash]core.Object, refs map[string]strin
 		}
 		command := "want " + want
 		if last == "" {
-			command += " ofs-delta"
+			command += " ofs-delta side-band-64k"
 		}
 		command += "\n"
 		body.WriteString(fmt.Sprintf("%04x%s", len(command)+4, command))
@@ -63,6 +64,6 @@ func Clone(gitURL string) (objs map[core.Hash]core.Object, refs map[string]strin
 		return nil, nil, nil, fmt.Errorf("POST /git-upload-pack: %d", resp.StatusCode)
 	}
 
-	objs, err = ParseUploadPackResponse(resp.Body)
+	objs, err = ParseUploadPackResponse(resp.Body, msgW)
 	return
 }

@@ -2,6 +2,7 @@ package git
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -79,15 +80,42 @@ func ParseSmartResponse(body io.Reader) (refs map[string]string, caps []string, 
 	}
 }
 
-func ParseUploadPackResponse(body io.Reader) (objs map[core.Hash]core.Object, err error) {
+func ParseUploadPackResponse(body io.Reader, msgW io.Writer) (objs map[core.Hash]core.Object, err error) {
+	r := &sideBandReader{Upstream: body, MsgW: msgW}
+	st := memory.NewObjectStorage()
+	_, err = packfile.NewReader(r).Read(st)
+	if r.Errors != nil {
+		err = fmt.Errorf("remote error: %s", r.Errors)
+	}
+	return st.Objects, err
+}
+
+type sideBandReader struct {
+	Upstream io.Reader
+	buffer   []byte
+
+	MsgW   io.Writer
+	Errors []byte
+}
+
+func (s *sideBandReader) Read(p []byte) (n int, err error) {
+	// Did I ever mention I love byte slices and the io.Reader interface?
+
+	if len(s.buffer) > 0 {
+		n := copy(p, s.buffer)
+		// I wonder if this release the memory when len(buffer) becomes 0...
+		s.buffer = s.buffer[n:]
+		return n, nil
+	}
+
 	for {
 		pktLenHex := make([]byte, 4)
-		if _, err := io.ReadFull(body, pktLenHex); err != nil {
-			return nil, err
+		if _, err := io.ReadFull(s.Upstream, pktLenHex); err != nil {
+			return 0, err
 		}
 		pktLen, err := strconv.ParseUint(string(pktLenHex), 16, 16)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
 
 		// "0000" marker
@@ -95,16 +123,24 @@ func ParseUploadPackResponse(body io.Reader) (objs map[core.Hash]core.Object, er
 			continue
 		}
 
-		lineBuf := make([]byte, pktLen-4)
-		if _, err := io.ReadFull(body, lineBuf); err != nil {
-			return nil, err
+		pkt := make([]byte, pktLen-4)
+		if _, err := io.ReadFull(s.Upstream, pkt); err != nil {
+			return 0, err
 		}
 
-		if string(lineBuf) == "NAK\n" {
-			break
+		if len(pkt) == 4+len("NAK\n") && string(pkt) == "NAK\n" {
+			continue
+		}
+
+		switch pkt[0] {
+		case 1:
+			n := copy(p, pkt[1:])
+			s.buffer = pkt[1+n:]
+			return n, nil
+		case 2:
+			s.MsgW.Write(pkt[1:]) // ignoring the error, it's just messages
+		case 3:
+			s.Errors = append(s.Errors, pkt[1:]...)
 		}
 	}
-	st := memory.NewObjectStorage()
-	_, err = packfile.NewReader(body).Read(st)
-	return st.Objects, err
 }
