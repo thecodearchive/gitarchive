@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+
 	"camlistore.org/pkg/blob"
 	"camlistore.org/pkg/client"
 	"camlistore.org/pkg/httputil"
@@ -22,6 +23,7 @@ import (
 	"camlistore.org/pkg/search"
 
 	"gopkg.in/src-d/go-git.v3/core"
+	"gopkg.in/src-d/go-git.v3/storage/memory"
 )
 
 func init() {
@@ -194,16 +196,16 @@ func (u *Uploader) GetRepo(name string) (*Repo, error) {
 	return &repo, err
 }
 
-func (u *Uploader) New() (Object, error) {
+func (u *Uploader) New() (core.Object, error) {
 	// Lazy, just used the core in memory objects for now.
-	return &core.Object{}, nil
+	return &memory.Object{}, nil
 }
 
-func (u *Uploader) Set(obj core.Object) (Hash, error) {
+func (u *Uploader) Set(obj core.Object) (core.Hash, error) {
 	return obj.Hash(), u.PutObject(obj)
 }
 
-func (u *Uploader) Get(core.Hash) (Object, error) {
+func (u *Uploader) Get(core.Hash) (core.Object, error) {
 	panic("Uploader.Get called")
 }
 
