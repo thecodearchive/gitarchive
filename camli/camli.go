@@ -152,6 +152,8 @@ func (u *Uploader) PutRepo(r *Repo) error {
 	return err
 }
 
+var repoNotFoundErr = errors.New("repo not found")
+
 func (u *Uploader) findRepo(name string) (blob.Ref, search.MetaMap, error) {
 	res, err := u.c.Query(&search.SearchQuery{
 		Limit: 1,
@@ -166,7 +168,7 @@ func (u *Uploader) findRepo(name string) (blob.Ref, search.MetaMap, error) {
 		return blob.Ref{}, nil, err
 	}
 	if len(res.Blobs) < 1 {
-		return blob.Ref{}, nil, errors.New("repo not found")
+		return blob.Ref{}, nil, repoNotFoundErr
 	}
 	return res.Blobs[0].Blob, res.Describe.Meta, nil
 }
@@ -175,7 +177,9 @@ func (u *Uploader) findRepo(name string) (blob.Ref, search.MetaMap, error) {
 // Repo object.
 func (u *Uploader) GetRepo(name string) (*Repo, error) {
 	pn, meta, err := u.findRepo(name)
-	if err != nil {
+	if err == repoNotFoundErr {
+		return nil, nil
+	} else if err != nil {
 		return nil, err
 	}
 	ref, ok := meta[pn.String()].ContentRef()

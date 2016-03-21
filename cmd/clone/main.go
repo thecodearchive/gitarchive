@@ -16,7 +16,17 @@ func main() {
 
 	uploader := camli.NewUploader()
 
-	refs, caps, err := git.Clone(url, uploader, os.Stderr)
+	repo, err := uploader.GetRepo(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var haves map[string]string
+	if repo != nil {
+		haves = repo.Refs
+	}
+
+	refs, caps, err := git.Fetch(url, haves, uploader, os.Stderr)
 	if err != nil {
 		log.Fatal(err)
 	}

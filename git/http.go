@@ -11,7 +11,9 @@ import (
 	"gopkg.in/src-d/go-git.v3/core"
 )
 
-func Clone(gitURL string, uploader core.ObjectStorage, msgW io.Writer) (refs map[string]string, caps []string, err error) {
+func Fetch(gitURL string, haves map[string]string, uploader core.ObjectStorage,
+	msgW io.Writer) (refs map[string]string, caps []string, err error) {
+
 	resp, err := http.Get(gitURL + "/info/refs?service=git-upload-pack")
 	if err != nil {
 		return nil, nil, err
@@ -25,13 +27,29 @@ func Clone(gitURL string, uploader core.ObjectStorage, msgW io.Writer) (refs map
 		return nil, nil, err
 	}
 
-	wants := []string{refs["HEAD"]}
-	for ref := range refs {
-		if strings.HasPrefix(ref, "refs/heads/") {
-			wants = append(wants, refs[ref])
+	for name := range refs {
+		if strings.HasPrefix(name, "refs/pull/") {
+			delete(refs, name)
 		}
 	}
+
+	havesSet := make(map[string]struct{})
+	for _, have := range haves {
+		havesSet[have] = struct{}{}
+	}
+
+	var wants []string
+	for name, ref := range refs {
+		if _, ok := havesSet[ref]; ok {
+			continue
+		}
+		wants = append(wants, refs[name])
+	}
 	sort.Strings(wants)
+
+	if len(wants) == 0 {
+		return
+	}
 
 	body := &bytes.Buffer{}
 	last := ""
@@ -41,13 +59,18 @@ func Clone(gitURL string, uploader core.ObjectStorage, msgW io.Writer) (refs map
 		}
 		command := "want " + want
 		if last == "" {
-			command += " ofs-delta side-band-64k"
+			command += " ofs-delta side-band-64k thin-pack"
 		}
 		command += "\n"
 		body.WriteString(fmt.Sprintf("%04x%s", len(command)+4, command))
 		last = want
 	}
-	body.WriteString("00000009done\n")
+	body.WriteString("0000")
+	for have := range havesSet { // TODO: sort the haves
+		command := "have " + have + "\n"
+		body.WriteString(fmt.Sprintf("%04x%s", len(command)+4, command))
+	}
+	body.WriteString("0009done\n")
 
 	req, err := http.NewRequest("POST", gitURL+"/git-upload-pack", body)
 	if err != nil {
@@ -65,5 +88,6 @@ func Clone(gitURL string, uploader core.ObjectStorage, msgW io.Writer) (refs map
 	}
 
 	err = ParseUploadPackResponse(resp.Body, uploader, msgW)
+
 	return
 }
