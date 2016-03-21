@@ -3,6 +3,7 @@
 package camli
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -13,7 +14,6 @@ import (
 	"log"
 	"strconv"
 	"time"
-
 
 	"camlistore.org/pkg/blob"
 	"camlistore.org/pkg/client"
@@ -205,8 +205,36 @@ func (u *Uploader) Set(obj core.Object) (core.Hash, error) {
 	return obj.Hash(), u.PutObject(obj)
 }
 
-func (u *Uploader) Get(core.Hash) (core.Object, error) {
-	panic("Uploader.Get called")
+func (u *Uploader) Get(hash core.Hash) (core.Object, error) {
+	r, _, err := u.c.Fetch(blob.MustParse(fmt.Sprintf("sha1-%x", hash)))
+	if err != nil {
+		return nil, err
+	}
+
+	obj := &memory.Object{}
+	buf := bufio.NewReader(r)
+	tstr, err := buf.ReadBytes(' ')
+	if err != nil {
+		return nil, err
+	}
+	t, err := core.ParseObjectType(string(tstr[:len(tstr)-1]))
+	if err != nil {
+		return nil, err
+	}
+	obj.SetType(t)
+
+	sizestr, err := buf.ReadBytes(0)
+	if err != nil {
+		return nil, err
+	}
+	size, err := strconv.Atoi(string(sizestr[:len(sizestr)-1]))
+	if err != nil {
+		return nil, err
+	}
+	obj.SetSize(int64(size))
+
+	_, err = io.Copy(obj.Writer(), buf)
+	return obj, err
 }
 
 func (u *Uploader) Iter(core.ObjectType) core.ObjectIter {
