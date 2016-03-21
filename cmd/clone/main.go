@@ -16,7 +16,7 @@ func main() {
 
 	uploader := camli.NewUploader()
 
-	objs, refs, caps, err := git.Clone(url, os.Stderr)
+	refs, caps, err := git.Clone(url, uploader, os.Stderr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -24,14 +24,6 @@ func main() {
 	fmt.Fprintf(os.Stderr, "%s\n", x)
 	x, _ = json.Marshal(refs)
 	fmt.Fprintf(os.Stderr, "%s\n", x)
-	fmt.Println("Received objects:", len(objs))
-
-	for _, o := range objs {
-		err := uploader.PutObject(o)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
 
 	err = uploader.PutRepo(&camli.Repo{
 		Name:      url,

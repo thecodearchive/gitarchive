@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 
 	"gopkg.in/src-d/go-git.v3/core"
 	"gopkg.in/src-d/go-git.v3/formats/packfile"
-	"gopkg.in/src-d/go-git.v3/storage/memory"
 )
 
 var GitParseError = errors.New("failed parsing the git protocol")
@@ -80,14 +80,15 @@ func ParseSmartResponse(body io.Reader) (refs map[string]string, caps []string, 
 	}
 }
 
-func ParseUploadPackResponse(body io.Reader, msgW io.Writer) (objs map[core.Hash]core.Object, err error) {
+func ParseUploadPackResponse(body io.Reader, uploader core.ObjectStorage, msgW io.Writer) (err error) {
 	r := &sideBandReader{Upstream: body, MsgW: msgW}
-	st := memory.NewObjectStorage()
-	_, err = packfile.NewReader(r).Read(st)
+	packReader := packfile.NewReader(r)
+	packReader.MaxObjectsLimit = math.MaxUint32
+	_, err = packReader.Read(uploader)
 	if r.Errors != nil {
 		err = fmt.Errorf("remote error: %s", r.Errors)
 	}
-	return st.Objects, err
+	return
 }
 
 type sideBandReader struct {

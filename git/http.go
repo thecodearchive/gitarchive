@@ -11,18 +11,18 @@ import (
 	"gopkg.in/src-d/go-git.v3/core"
 )
 
-func Clone(gitURL string, msgW io.Writer) (objs map[core.Hash]core.Object, refs map[string]string, caps []string, err error) {
+func Clone(gitURL string, uploader core.ObjectStorage, msgW io.Writer) (refs map[string]string, caps []string, err error) {
 	resp, err := http.Get(gitURL + "/info/refs?service=git-upload-pack")
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, nil, nil, fmt.Errorf("GET /info/refs: %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("GET /info/refs: %d", resp.StatusCode)
 	}
 	refs, caps, err = ParseSmartResponse(resp.Body)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	wants := []string{refs["HEAD"]}
@@ -51,19 +51,19 @@ func Clone(gitURL string, msgW io.Writer) (objs map[core.Hash]core.Object, refs 
 
 	req, err := http.NewRequest("POST", gitURL+"/git-upload-pack", body)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-git-upload-pack-request")
 	req.Header.Set("Accept", "application/x-git-upload-pack-result")
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, nil, nil, fmt.Errorf("POST /git-upload-pack: %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("POST /git-upload-pack: %d", resp.StatusCode)
 	}
 
-	objs, err = ParseUploadPackResponse(resp.Body, msgW)
+	err = ParseUploadPackResponse(resp.Body, uploader, msgW)
 	return
 }

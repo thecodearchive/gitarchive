@@ -206,7 +206,7 @@ func (u *Uploader) Set(obj core.Object) (core.Hash, error) {
 }
 
 func (u *Uploader) Get(hash core.Hash) (core.Object, error) {
-	r, _, err := u.c.Fetch(blob.MustParse(fmt.Sprintf("sha1-%x", hash)))
+	r, _, err := u.c.Fetch(blob.MustParse(fmt.Sprintf("sha1-%s", hash)))
 	if err != nil {
 		return nil, err
 	}
