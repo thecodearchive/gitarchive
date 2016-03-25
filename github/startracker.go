@@ -23,6 +23,7 @@ type StarTracker struct {
 
 type repo struct {
 	stars       int
+	parent      string
 	lastFetched time.Time
 }
 
@@ -35,15 +36,15 @@ func NewStarTracker(maxSize int, gitHubToken string) *StarTracker {
 	return &StarTracker{lru: lru.New(maxSize), gh: github.NewClient(tc)}
 }
 
-func (s *StarTracker) Get(name string) (int, error) {
+func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 	res, ok := s.lru.Get(name)
 	if ok {
-		return res.(*repo).stars, nil
+		return res.(*repo).stars, res.(*repo).parent, nil
 	}
 
 	nameParts := strings.Split(name, "/")
 	if len(nameParts) != 2 {
-		return 0, errors.New("name must be in user/repo format")
+		return 0, "", errors.New("name must be in user/repo format")
 	}
 	for {
 		t := time.Now()
@@ -53,14 +54,22 @@ func (s *StarTracker) Get(name string) (int, error) {
 			time.Sleep(err.Rate.Reset.Sub(time.Now()))
 			continue
 		} else if err != nil {
-			return 0, err
+			return 0, "", err
 		}
 		if r.StargazersCount == nil {
-			return 0, errors.New("GitHub didn't tell us the StargazersCount")
+			return 0, "", errors.New("GitHub didn't tell us the StargazersCount")
 		}
 
-		s.lru.Add(name, &repo{stars: *r.StargazersCount, lastFetched: t})
-		return *r.StargazersCount, nil
+		if r.Parent != nil && r.Parent.FullName != nil {
+			parent = *r.Parent.FullName
+		}
+
+		s.lru.Add(name, &repo{
+			stars:       *r.StargazersCount,
+			lastFetched: t,
+			parent:      parent,
+		})
+		return *r.StargazersCount, parent, nil
 	}
 }
 
