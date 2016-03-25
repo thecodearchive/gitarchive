@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -21,14 +20,13 @@ import (
 	"camlistore.org/pkg/osutil"
 	"camlistore.org/pkg/schema"
 	"camlistore.org/pkg/search"
-
+	"go4.org/types"
 	"gopkg.in/src-d/go-git.v3/core"
 	"gopkg.in/src-d/go-git.v3/storage/memory"
 )
 
-func init() {
+func RegisterFlags() {
 	osutil.AddSecretRingFlag()
-	flag.Parse()
 }
 
 type Uploader struct {
@@ -50,23 +48,27 @@ func NewUploader() *Uploader {
 	}
 }
 
-// PutObject uploads a blob to Camlistore.
-func (u *Uploader) PutObject(obj core.Object) error {
-	sum := [20]byte(obj.Hash())
+func gitBlobReader(obj core.Object) (io.Reader, uint32) {
 	head := obj.Type().Bytes()
 	head = append(head, ' ')
 	head = strconv.AppendInt(head, obj.Size(), 10)
 	head = append(head, 0)
 	r := io.MultiReader(bytes.NewReader(head), obj.Reader())
+	size := uint32(obj.Size()) + uint32(len(head))
+	return r, size
+}
 
+// PutObject uploads a blob to Camlistore.
+func (u *Uploader) PutObject(obj core.Object) error {
+	sum := [20]byte(obj.Hash())
+	r, size := gitBlobReader(obj)
 	result, err := u.c.Upload(&client.UploadHandle{
 		BlobRef:  blob.MustParse(fmt.Sprintf("sha1-%x", sum)),
-		Size:     uint32(obj.Size()) + uint32(len(head)),
+		Size:     size,
 		Contents: r,
 	})
 	if err != nil {
-		log.Printf("couldn't store object: %x", sum)
-		return err
+		return fmt.Errorf("couldn't store %x: %v", sum, err)
 	}
 	if result.Skipped {
 		log.Printf("object %x already on the server", sum)
@@ -82,9 +84,8 @@ type Repo struct {
 	CamliVersion int
 	CamliType    string
 	Name         string
-	// TODO switch to Time3339 so we can to query this.
-	Retrieved time.Time
-	Refs      map[string]string
+	Retrieved    types.Time3339
+	Refs         map[string]string
 }
 
 // PutRepo stores a Repo in Camlistore.
