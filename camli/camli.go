@@ -17,7 +17,6 @@ import (
 	"camlistore.org/pkg/blob"
 	"camlistore.org/pkg/client"
 	"camlistore.org/pkg/httputil"
-	"camlistore.org/pkg/osutil"
 	"camlistore.org/pkg/schema"
 	"camlistore.org/pkg/search"
 	"go4.org/types"
@@ -25,8 +24,8 @@ import (
 	"gopkg.in/src-d/go-git.v3/storage/memory"
 )
 
-func RegisterFlags() {
-	osutil.AddSecretRingFlag()
+func AddFlags() {
+	client.AddFlags()
 }
 
 type Uploader struct {

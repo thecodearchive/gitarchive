@@ -2,17 +2,22 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"time"
+
+	"go4.org/types"
 
 	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/git"
 )
 
 func main() {
-	url := os.Args[1]
+	camli.AddFlags()
+	flag.Parse()
+	url := flag.Arg(0)
 
 	uploader := camli.NewUploader()
 
@@ -37,7 +42,7 @@ func main() {
 
 	err = uploader.PutRepo(&camli.Repo{
 		Name:      url,
-		Retrieved: time.Now(),
+		Retrieved: types.Time3339(time.Now()),
 		Refs:      refs,
 	})
 	if err != nil {
