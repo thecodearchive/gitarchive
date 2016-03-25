@@ -7,6 +7,9 @@ import (
 )
 
 func TestStarTracker(t *testing.T) {
+	if os.Getenv("GITHUB_TOKEN") == "" {
+		t.Fatal("Please set the env var GITHUB_TOKEN")
+	}
 	st := NewStarTracker(100, os.Getenv("GITHUB_TOKEN"))
 	starsOld, parent, err := st.Get("FiloSottile/ansible-sshknownhosts")
 	if err != nil {

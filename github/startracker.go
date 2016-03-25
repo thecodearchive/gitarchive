@@ -60,7 +60,8 @@ func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 			log.Println("Hit GitHub ratelimits, sleeping until", err.Rate.Reset)
 			time.Sleep(err.Rate.Reset.Sub(time.Now()))
 			continue
-		} else if err != nil {
+		}
+		if err != nil {
 			return 0, "", err
 		}
 		if r.StargazersCount == nil {
