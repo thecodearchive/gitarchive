@@ -19,6 +19,8 @@ import (
 type StarTracker struct {
 	lru *lru.Cache
 	gh  *github.Client
+
+	panicIfNetwork bool // used for testing
 }
 
 type repo struct {
@@ -39,7 +41,12 @@ func NewStarTracker(maxSize int, gitHubToken string) *StarTracker {
 func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 	res, ok := s.lru.Get(name)
 	if ok {
-		return res.(*repo).stars, res.(*repo).parent, nil
+		repo := res.(*repo)
+		return repo.stars, repo.parent, nil
+	}
+
+	if s.panicIfNetwork {
+		panic("network connection with panicIfNetwork=true")
 	}
 
 	nameParts := strings.Split(name, "/")
