@@ -4,15 +4,27 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"io"
+
+	"github.com/google/go-github/github"
 )
 
 type Event struct {
-	CreatedAt string          `json:"created_at"`
-	Payload   json.RawMessage `json:"payload"`
+	CreatedAt github.Timestamp `json:"created_at"`
+	Payload   json.RawMessage  `json:"payload"`
 	Repo      struct {
 		Name string `json:"name"`
 	} `json:"repo"`
 	Type string `json:"type"`
+}
+
+type CreateEvent struct {
+	RefType string `json:"ref_type"`
+}
+
+type ForkEvent struct {
+	Forkee struct {
+		FullName string `json:"full_name"`
+	} `json:"forkee"`
 }
 
 // TimelineArchiveReader reads a .json.gz like those offered by githubarchive.org

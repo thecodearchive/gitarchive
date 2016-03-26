@@ -92,3 +92,24 @@ func (s *StarTracker) WatchEvent(name string, created time.Time) {
 		repo.stars += 1
 	}
 }
+
+func (s *StarTracker) CreateEvent(name, parent string, created time.Time) {
+	if _, ok := s.lru.Get(name); !ok {
+		s.lru.Add(name, &repo{
+			stars:       0,
+			lastFetched: created,
+			parent:      parent,
+		})
+	} else {
+		log.Println("CreateEvent after we already knew about the repo:", name)
+	}
+}
+
+func Is404(err error) bool {
+	if err, ok := err.(*github.ErrorResponse); ok {
+		if err.Response != nil && err.Response.StatusCode == 404 {
+			return true
+		}
+	}
+	return false
+}
