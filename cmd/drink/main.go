@@ -9,6 +9,8 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
+	"sync/atomic"
 
 	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/github"
@@ -17,11 +19,13 @@ import (
 
 var (
 	exp       = expvar.NewMap("drink")
+	expEvents = new(expvar.Map).Init()
 	expLatest = new(expvar.String)
 )
 
 func init() {
 	exp.Set("latestevent", expLatest)
+	exp.Set("events", expEvents)
 }
 
 func main() {
@@ -43,21 +47,33 @@ func main() {
 	st := github.NewStarTracker(1000000000, os.Getenv("GITHUB_TOKEN"))
 	exp.Set("github", st.Expvar())
 
-	log.Println("Opening queue...")
+	var closing uint32
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		<-c
+		log.Println("[ ] Terminating gracefully...")
+		atomic.StoreUint32(&closing, 1)
+	}()
+
+	log.Println("[ ] Opening queue...")
 	q, err := queue.Open(flag.Arg(1))
 	fatalIfErr(err)
-	defer func() { fatalIfErr(q.Close()) }()
+	defer func() {
+		log.Println("[ ] Closing queue...")
+		fatalIfErr(q.Close())
+	}()
 
-	log.Println("Opening archive...")
+	log.Println("[ ] Opening archive...")
 	f, err := os.Open(flag.Arg(0))
 	fatalIfErr(err)
-	defer func() { fatalIfErr(f.Close()) }()
+	defer f.Close()
 	r, err := github.NewTimelineArchiveReader(f)
 	fatalIfErr(err)
-	defer func() { fatalIfErr(r.Close()) }()
+	defer r.Close()
 
-	log.Println("Reading events")
-	for {
+	log.Println("[ ] Reading events...")
+	for atomic.LoadUint32(&closing) == 0 {
 		var e github.Event
 		if err := r.Read(&e); err == io.EOF {
 			break
@@ -65,37 +81,41 @@ func main() {
 			fatalIfErr(err)
 		}
 
-		exp.Add("readevents", 1)
+		expEvents.Add(e.Type, 1)
 		expLatest.Set(e.CreatedAt.String())
 
 		switch e.Type {
 		case "PushEvent":
 			url := "https://github.com/" + e.Repo.Name + ".git"
 			repo, err := uploader.GetRepo(url)
-			fatalIfErr(err)
+			if err != nil {
+				exp.Add("dropped", 1)
+				log.Printf("[-] Camli error: %s; dropped event: %#v", err, e)
+				continue
+			}
 			if repo != nil {
 				exp.Add("gotrepo", 1)
 				exp.Add("queued", 1)
 				q.Add(e.Repo.Name, repo.Parent)
-				log.Printf("Queued repo %s", e.Repo.Name)
 			}
 
 			stars, parent, err := st.Get(e.Repo.Name)
 			if github.Is404(err) {
 				exp.Add("vanished", 1)
-				log.Printf("Skipping repo %s (it vanished)", e.Repo.Name)
 				continue
 			}
-			fatalIfErr(err)
+			if err != nil {
+				exp.Add("dropped", 1)
+				log.Printf("[-] ST error: %s; dropped event: %#v", err, e)
+				continue
+			}
 			if stars < 10 {
 				exp.Add("skipped", 1)
-				log.Printf("Skipping repo %s (%d stars)", e.Repo.Name, stars)
 				continue
 			}
 
 			exp.Add("queued", 1)
 			q.Add(e.Repo.Name, parent)
-			log.Printf("Queued repo %s", e.Repo.Name)
 
 		case "CreateEvent":
 			var ce github.CreateEvent
@@ -119,6 +139,8 @@ func main() {
 			// TODO
 		}
 	}
+
+	log.Println("[+] Processed events until", expLatest)
 }
 
 func fatalIfErr(err error) {
