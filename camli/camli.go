@@ -83,6 +83,7 @@ type Repo struct {
 	CamliVersion int
 	CamliType    string
 	Name         string
+	Parent       string
 	Retrieved    types.Time3339
 	Refs         map[string]string
 }
