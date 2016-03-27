@@ -50,7 +50,6 @@ func NewStarTracker(maxSize int, gitHubToken string) *StarTracker {
 	s.expRateReset = new(expvar.String)
 	s.exp.Set("rateleft", s.expRateLeft)
 	s.exp.Set("ratereset", s.expRateReset)
-	// TODO: s.lru.Len() is racy
 	s.exp.Set("cachesize", expvar.Func(func() interface{} { return s.lru.Len() }))
 
 	return s

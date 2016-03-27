@@ -17,7 +17,10 @@ limitations under the License.
 // Package lru implements an LRU cache.
 package lru
 
-import "container/list"
+import (
+	"container/list"
+	"sync/atomic"
+)
 
 // Cache is an LRU cache. It is not safe for concurrent access.
 type Cache struct {
@@ -27,17 +30,15 @@ type Cache struct {
 
 	// OnEvicted optionally specificies a callback function to be
 	// executed when an entry is purged from the cache.
-	OnEvicted func(key Key, value interface{})
+	OnEvicted func(key string, value interface{})
 
-	ll    *list.List
-	cache map[interface{}]*list.Element
+	ll     *list.List
+	cache  map[string]*list.Element
+	length uint32
 }
 
-// A Key may be any value that is comparable. See http://golang.org/ref/spec#Comparison_operators
-type Key interface{}
-
 type entry struct {
-	key   Key
+	key   string
 	value interface{}
 }
 
@@ -48,14 +49,14 @@ func New(maxEntries int) *Cache {
 	return &Cache{
 		MaxEntries: maxEntries,
 		ll:         list.New(),
-		cache:      make(map[interface{}]*list.Element),
+		cache:      make(map[string]*list.Element),
 	}
 }
 
 // Add adds a value to the cache.
-func (c *Cache) Add(key Key, value interface{}) {
+func (c *Cache) Add(key string, value interface{}) {
 	if c.cache == nil {
-		c.cache = make(map[interface{}]*list.Element)
+		c.cache = make(map[string]*list.Element)
 		c.ll = list.New()
 	}
 	if ee, ok := c.cache[key]; ok {
@@ -65,13 +66,14 @@ func (c *Cache) Add(key Key, value interface{}) {
 	}
 	ele := c.ll.PushFront(&entry{key, value})
 	c.cache[key] = ele
+	atomic.AddUint32(&c.length, 1)
 	if c.MaxEntries != 0 && c.ll.Len() > c.MaxEntries {
 		c.RemoveOldest()
 	}
 }
 
 // Get looks up a key's value from the cache.
-func (c *Cache) Get(key Key) (value interface{}, ok bool) {
+func (c *Cache) Get(key string) (value interface{}, ok bool) {
 	if c.cache == nil {
 		return
 	}
@@ -83,7 +85,7 @@ func (c *Cache) Get(key Key) (value interface{}, ok bool) {
 }
 
 // Remove removes the provided key from the cache.
-func (c *Cache) Remove(key Key) {
+func (c *Cache) Remove(key string) {
 	if c.cache == nil {
 		return
 	}
@@ -107,15 +109,17 @@ func (c *Cache) removeElement(e *list.Element) {
 	c.ll.Remove(e)
 	kv := e.Value.(*entry)
 	delete(c.cache, kv.key)
+	atomic.AddUint32(&c.length, ^uint32(0)) // decrement c.length
 	if c.OnEvicted != nil {
 		c.OnEvicted(kv.key, kv.value)
 	}
 }
 
-// Len returns the number of items in the cache.
-func (c *Cache) Len() int {
+// Len returns the number of items in the cache. It is safe to use concurrently
+// with any other operations.
+func (c *Cache) Len() uint32 {
 	if c.cache == nil {
 		return 0
 	}
-	return c.ll.Len()
+	return atomic.LoadUint32(&c.length)
 }
