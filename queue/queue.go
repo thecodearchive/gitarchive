@@ -12,10 +12,8 @@ import (
 //
 // It is safe for concurrent use by multiple goroutines AND processes.
 //
-// The Queue populator is supposed to know when queuing is not necessary, for
-// example by checking against an external source (Camlistore) the last time the
-// consumer ran on the given name, and skipping Add if that's more recent than
-// the update event being processed.
+// The Queue keeps no memory of Pop-ed names, so the populator is supposed to
+// know when a Pop happened more recently than the event triggering the Add.
 type Queue struct {
 	db *sql.DB
 
@@ -56,6 +54,7 @@ func Open(path string) (*Queue, error) {
 	return q, nil
 }
 
+// Add is idempotent
 func (q *Queue) Add(name, parent string) error {
 	_, err := q.insertQ.Exec(name, parent)
 	return err

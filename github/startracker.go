@@ -16,6 +16,10 @@ import (
 // in-memory LRU, goes to GitHub for never-seen-before, and it assumes it will
 // be told about every WatchEvent ever since so that it can keep the number
 // accurate without ever going to the network again.
+//
+// A StarTracker is not safe to use by multiple goroutines at the same time, and
+// it assumes WatchEvents and Gets are submited sequentially anyway. However, it
+// is fully idempotent.
 type StarTracker struct {
 	lru *lru.Cache
 	gh  *github.Client
@@ -26,7 +30,7 @@ type StarTracker struct {
 type repo struct {
 	stars       int
 	parent      string
-	lastFetched time.Time
+	lastUpdated time.Time
 }
 
 func NewStarTracker(maxSize int, gitHubToken string) *StarTracker {
@@ -74,7 +78,7 @@ func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 
 		s.lru.Add(name, &repo{
 			stars:       *r.StargazersCount,
-			lastFetched: t,
+			lastUpdated: t,
 			parent:      parent,
 		})
 		return *r.StargazersCount, parent, nil
@@ -88,21 +92,21 @@ func (s *StarTracker) WatchEvent(name string, created time.Time) {
 	}
 
 	repo := res.(*repo)
-	if created.After(repo.lastFetched) {
+	if created.After(repo.lastUpdated) {
 		repo.stars += 1
+		repo.lastUpdated = created
 	}
 }
 
 func (s *StarTracker) CreateEvent(name, parent string, created time.Time) {
-	if _, ok := s.lru.Get(name); !ok {
-		s.lru.Add(name, &repo{
-			stars:       0,
-			lastFetched: created,
-			parent:      parent,
-		})
-	} else {
-		log.Println("CreateEvent after we already knew about the repo:", name)
+	if _, ok := s.lru.Get(name); ok {
+		return // maintain idempotency
 	}
+	s.lru.Add(name, &repo{
+		stars:       0,
+		lastUpdated: created,
+		parent:      parent,
+	})
 }
 
 func Is404(err error) bool {
