@@ -2,6 +2,7 @@ package github
 
 import (
 	"errors"
+	"expvar"
 	"log"
 	"strings"
 	"time"
@@ -24,6 +25,10 @@ type StarTracker struct {
 	lru *lru.Cache
 	gh  *github.Client
 
+	exp          *expvar.Map
+	expRateLeft  *expvar.Int
+	expRateReset *expvar.String
+
 	panicIfNetwork bool // used for testing
 }
 
@@ -39,12 +44,22 @@ func NewStarTracker(maxSize int, gitHubToken string) *StarTracker {
 	)
 	tc := oauth2.NewClient(oauth2.NoContext, ts)
 
-	return &StarTracker{lru: lru.New(maxSize), gh: github.NewClient(tc)}
+	s := &StarTracker{lru: lru.New(maxSize), gh: github.NewClient(tc)}
+
+	s.exp = new(expvar.Map).Init()
+	s.expRateLeft = new(expvar.Int)
+	s.expRateReset = new(expvar.String)
+	s.exp.Set("rateleft", s.expRateLeft)
+	s.exp.Set("ratereset", s.expRateReset)
+	s.exp.Set("cachesize", expvar.Func(func() interface{} { return s.lru.Len() }))
+
+	return s
 }
 
 func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 	res, ok := s.lru.Get(name)
 	if ok {
+		s.exp.Add("cachehits", 1)
 		repo := res.(*repo)
 		return repo.stars, repo.parent, nil
 	}
@@ -59,8 +74,11 @@ func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 	}
 	for {
 		t := time.Now()
+		s.exp.Add("apicalls", 1)
 		r, _, err := s.gh.Repositories.Get(nameParts[0], nameParts[1])
+		s.trackRate()
 		if err, ok := err.(*github.RateLimitError); ok {
+			s.exp.Add("ratehits", 1)
 			log.Println("Hit GitHub ratelimits, sleeping until", err.Rate.Reset)
 			time.Sleep(err.Rate.Reset.Sub(time.Now()))
 			continue
@@ -107,6 +125,16 @@ func (s *StarTracker) CreateEvent(name, parent string, created time.Time) {
 		lastUpdated: created,
 		parent:      parent,
 	})
+}
+
+func (s *StarTracker) Expvar() *expvar.Map {
+	return s.exp
+}
+
+func (s *StarTracker) trackRate() {
+	rate := s.gh.Rate()
+	s.expRateLeft.Set(int64(rate.Remaining))
+	s.expRateReset.Set(rate.Reset.String())
 }
 
 func Is404(err error) bool {
