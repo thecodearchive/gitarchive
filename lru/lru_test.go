@@ -17,31 +17,30 @@ limitations under the License.
 package lru
 
 import (
+	"bytes"
+	"encoding/json"
+	"reflect"
 	"testing"
 )
 
 type simpleStruct struct {
-	int
-	string
+	A int
+	B string
 }
 
 type complexStruct struct {
-	int
-	simpleStruct
+	A int
+	B simpleStruct
 }
 
 var getTests = []struct {
 	name       string
-	keyToAdd   interface{}
-	keyToGet   interface{}
+	keyToAdd   string
+	keyToGet   string
 	expectedOk bool
 }{
 	{"string_hit", "myKey", "myKey", true},
 	{"string_miss", "myKey", "nonsense", false},
-	{"simple_struct_hit", simpleStruct{1, "two"}, simpleStruct{1, "two"}, true},
-	{"simeple_struct_miss", simpleStruct{1, "two"}, simpleStruct{0, "noway"}, false},
-	{"complex_struct_hit", complexStruct{1, simpleStruct{2, "three"}},
-		complexStruct{1, simpleStruct{2, "three"}}, true},
 }
 
 func TestGet(t *testing.T) {
@@ -69,5 +68,28 @@ func TestRemove(t *testing.T) {
 	lru.Remove("myKey")
 	if _, ok := lru.Get("myKey"); ok {
 		t.Fatal("TestRemove returned a removed entry")
+	}
+}
+
+func TestSaveLoad(t *testing.T) {
+	lru := New(0)
+	lru.Add("myKey", complexStruct{1, simpleStruct{2, "three"}})
+	lru.Add("myKey2", complexStruct{4, simpleStruct{5, "six"}})
+	lru.Add("myKey3", complexStruct{7, simpleStruct{8, "nine"}})
+	b := &bytes.Buffer{}
+	if err := lru.Save(b); err != nil {
+		t.Fatal(err)
+	}
+
+	newLRU, err := Load(b, func(e json.RawMessage) (interface{}, error) {
+		var c complexStruct
+		err := json.Unmarshal(e, &c)
+		return c, err
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(lru, newLRU) {
+		t.Fail()
 	}
 }

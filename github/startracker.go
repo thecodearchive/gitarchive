@@ -1,8 +1,10 @@
 package github
 
 import (
+	"encoding/json"
 	"errors"
 	"expvar"
+	"io"
 	"strings"
 	"time"
 
@@ -32,9 +34,9 @@ type StarTracker struct {
 }
 
 type repo struct {
-	stars       int
-	parent      string
-	lastUpdated time.Time
+	Stars       int
+	Parent      string
+	LastUpdated time.Time
 }
 
 func NewStarTracker(maxSize int, gitHubToken string) *StarTracker {
@@ -60,7 +62,7 @@ func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 	if ok {
 		s.exp.Add("cachehits", 1)
 		repo := res.(*repo)
-		return repo.stars, repo.parent, nil
+		return repo.Stars, repo.Parent, nil
 	}
 
 	if s.panicIfNetwork {
@@ -88,9 +90,9 @@ func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 	}
 
 	s.lru.Add(name, &repo{
-		stars:       *r.StargazersCount,
-		lastUpdated: t,
-		parent:      parent,
+		Stars:       *r.StargazersCount,
+		LastUpdated: t,
+		Parent:      parent,
 	})
 	return *r.StargazersCount, parent, nil
 }
@@ -102,9 +104,9 @@ func (s *StarTracker) WatchEvent(name string, created time.Time) {
 	}
 
 	repo := res.(*repo)
-	if created.After(repo.lastUpdated) {
-		repo.stars += 1
-		repo.lastUpdated = created
+	if created.After(repo.LastUpdated) {
+		repo.Stars += 1
+		repo.LastUpdated = created
 	}
 }
 
@@ -113,9 +115,9 @@ func (s *StarTracker) CreateEvent(name, parent string, created time.Time) {
 		return // maintain idempotency
 	}
 	s.lru.Add(name, &repo{
-		stars:       0,
-		lastUpdated: created,
-		parent:      parent,
+		Stars:       0,
+		LastUpdated: created,
+		Parent:      parent,
 	})
 }
 
@@ -127,6 +129,19 @@ func (s *StarTracker) trackRate() {
 	rate := s.gh.Rate()
 	s.expRateLeft.Set(int64(rate.Remaining))
 	s.expRateReset.Set(rate.Reset.String())
+}
+
+func (s *StarTracker) SaveCache(w io.Writer) error {
+	return s.lru.Save(w)
+}
+
+func (s *StarTracker) LoadCache(r io.Reader) (err error) {
+	s.lru, err = lru.Load(r, func(e json.RawMessage) (interface{}, error) {
+		var r repo
+		err := json.Unmarshal(e, &r)
+		return &r, err
+	}, s.lru.MaxEntries)
+	return
 }
 
 func Is404(err error) bool {

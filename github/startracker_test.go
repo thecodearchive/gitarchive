@@ -1,10 +1,21 @@
 package github
 
 import (
+	"bytes"
 	"os"
 	"testing"
 	"time"
 )
+
+func checkStars(t *testing.T, st *StarTracker, name string, starsWant int) {
+	starsNew, _, err := st.Get("FiloSottile/ansible-sshknownhosts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if starsNew != starsWant {
+		t.Fatal(starsNew, starsWant)
+	}
+}
 
 func TestStarTracker(t *testing.T) {
 	if os.Getenv("GITHUB_TOKEN") == "" {
@@ -20,20 +31,19 @@ func TestStarTracker(t *testing.T) {
 	}
 	st.panicIfNetwork = true
 	time.Sleep(1)
-	st.WatchEvent("FiloSottile/ansible-sshknownhosts", time.Now().Add(time.Hour))
-	starsNew, _, err := st.Get("FiloSottile/ansible-sshknownhosts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if starsNew != starsOld+1 {
-		t.Fatal(starsOld, starsNew)
-	}
 	st.WatchEvent("FiloSottile/ansible-sshknownhosts", time.Now().Add(-1*time.Hour))
-	starsNew, _, err = st.Get("FiloSottile/ansible-sshknownhosts")
-	if err != nil {
+	checkStars(t, st, "FiloSottile/ansible-sshknownhosts", starsOld)
+	st.WatchEvent("FiloSottile/ansible-sshknownhosts", time.Now().Add(time.Hour))
+	checkStars(t, st, "FiloSottile/ansible-sshknownhosts", starsOld+1)
+
+	b := &bytes.Buffer{}
+	if err := st.SaveCache(b); err != nil {
 		t.Fatal(err)
 	}
-	if starsNew != starsOld+1 {
-		t.Fatal(starsOld, starsNew)
+	st.WatchEvent("FiloSottile/ansible-sshknownhosts", time.Now().Add(2*time.Hour))
+	checkStars(t, st, "FiloSottile/ansible-sshknownhosts", starsOld+2)
+	if err := st.LoadCache(b); err != nil {
+		t.Fatal(err)
 	}
+	checkStars(t, st, "FiloSottile/ansible-sshknownhosts", starsOld+1)
 }

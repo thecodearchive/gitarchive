@@ -19,6 +19,9 @@ package lru
 
 import (
 	"container/list"
+	"encoding/json"
+	"errors"
+	"io"
 	"sync/atomic"
 )
 
@@ -38,8 +41,8 @@ type Cache struct {
 }
 
 type entry struct {
-	key   string
-	value interface{}
+	Key   string
+	Value interface{}
 }
 
 // New creates a new Cache.
@@ -53,6 +56,31 @@ func New(maxEntries int) *Cache {
 	}
 }
 
+func Load(r io.Reader, load func(json.RawMessage) (interface{}, error),
+	maxEntries int) (*Cache, error) {
+	var list []struct {
+		Key   string
+		Value json.RawMessage
+	}
+	if err := json.NewDecoder(r).Decode(&list); err != nil {
+		return nil, err
+	}
+	if maxEntries != 0 && len(list) > maxEntries {
+		return nil, errors.New("trying to load more than maxEntries")
+	}
+	c := New(maxEntries)
+	for _, e := range list {
+		value, err := load(e.Value)
+		if err != nil {
+			return nil, err
+		}
+		ele := c.ll.PushBack(&entry{e.Key, value})
+		c.cache[e.Key] = ele
+	}
+	atomic.StoreUint32(&c.length, uint32(len(list)))
+	return c, nil
+}
+
 // Add adds a value to the cache.
 func (c *Cache) Add(key string, value interface{}) {
 	if c.cache == nil {
@@ -61,7 +89,7 @@ func (c *Cache) Add(key string, value interface{}) {
 	}
 	if ee, ok := c.cache[key]; ok {
 		c.ll.MoveToFront(ee)
-		ee.Value.(*entry).value = value
+		ee.Value.(*entry).Value = value
 		return
 	}
 	ele := c.ll.PushFront(&entry{key, value})
@@ -79,7 +107,7 @@ func (c *Cache) Get(key string) (value interface{}, ok bool) {
 	}
 	if ele, hit := c.cache[key]; hit {
 		c.ll.MoveToFront(ele)
-		return ele.Value.(*entry).value, true
+		return ele.Value.(*entry).Value, true
 	}
 	return
 }
@@ -108,10 +136,10 @@ func (c *Cache) RemoveOldest() {
 func (c *Cache) removeElement(e *list.Element) {
 	c.ll.Remove(e)
 	kv := e.Value.(*entry)
-	delete(c.cache, kv.key)
+	delete(c.cache, kv.Key)
 	atomic.AddUint32(&c.length, ^uint32(0)) // decrement c.length
 	if c.OnEvicted != nil {
-		c.OnEvicted(kv.key, kv.value)
+		c.OnEvicted(kv.Key, kv.Value)
 	}
 }
 
@@ -122,4 +150,16 @@ func (c *Cache) Len() uint32 {
 		return 0
 	}
 	return atomic.LoadUint32(&c.length)
+}
+
+// Save serializes the cache. All values must support json.Marshal.
+func (c *Cache) Save(w io.Writer) error {
+	if c.cache == nil {
+		return nil
+	}
+	var list []*entry
+	for e := c.ll.Front(); e != nil; e = e.Next() {
+		list = append(list, e.Value.(*entry))
+	}
+	return json.NewEncoder(w).Encode(list)
 }
