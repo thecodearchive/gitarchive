@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"sync/atomic"
+	"time"
 
 	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/github"
@@ -100,6 +101,16 @@ func main() {
 			}
 
 			stars, parent, err := st.Get(e.Repo.Name)
+			if rate := github.IsRateLimit(err); rate != nil {
+				exp.Add("ratehits", 1)
+				log.Println("Hit GitHub ratelimits, sleeping until", rate.Reset)
+				interruptableSleep(rate.Reset.Sub(time.Now()))
+
+				// TODO: retry, both here and for the other "dropped" cases
+				exp.Add("dropped", 1)
+				log.Printf("[-] Resuming; dropped event: %#v", e)
+				continue
+			}
 			if github.Is404(err) {
 				exp.Add("vanished", 1)
 				continue
@@ -146,5 +157,18 @@ func main() {
 func fatalIfErr(err error) {
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func interruptableSleep(d time.Duration) bool {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	defer signal.Stop(c)
+	t := time.NewTimer(d)
+	select {
+	case <-c:
+		return false
+	case <-t.C:
+		return true
 	}
 }

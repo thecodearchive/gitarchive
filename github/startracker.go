@@ -3,7 +3,6 @@ package github
 import (
 	"errors"
 	"expvar"
-	"log"
 	"strings"
 	"time"
 
@@ -72,35 +71,28 @@ func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 	if len(nameParts) != 2 {
 		return 0, "", errors.New("name must be in user/repo format")
 	}
-	for {
-		t := time.Now()
-		s.exp.Add("apicalls", 1)
-		r, _, err := s.gh.Repositories.Get(nameParts[0], nameParts[1])
-		s.trackRate()
-		if err, ok := err.(*github.RateLimitError); ok {
-			s.exp.Add("ratehits", 1)
-			log.Println("Hit GitHub ratelimits, sleeping until", err.Rate.Reset)
-			time.Sleep(err.Rate.Reset.Sub(time.Now()))
-			continue
-		}
-		if err != nil {
-			return 0, "", err
-		}
-		if r.StargazersCount == nil {
-			return 0, "", errors.New("GitHub didn't tell us the StargazersCount")
-		}
 
-		if r.Parent != nil && r.Parent.FullName != nil {
-			parent = *r.Parent.FullName
-		}
-
-		s.lru.Add(name, &repo{
-			stars:       *r.StargazersCount,
-			lastUpdated: t,
-			parent:      parent,
-		})
-		return *r.StargazersCount, parent, nil
+	t := time.Now()
+	s.exp.Add("apicalls", 1)
+	r, _, err := s.gh.Repositories.Get(nameParts[0], nameParts[1])
+	s.trackRate()
+	if err != nil {
+		return 0, "", err
 	}
+	if r.StargazersCount == nil {
+		return 0, "", errors.New("GitHub didn't tell us the StargazersCount")
+	}
+
+	if r.Parent != nil && r.Parent.FullName != nil {
+		parent = *r.Parent.FullName
+	}
+
+	s.lru.Add(name, &repo{
+		stars:       *r.StargazersCount,
+		lastUpdated: t,
+		parent:      parent,
+	})
+	return *r.StargazersCount, parent, nil
 }
 
 func (s *StarTracker) WatchEvent(name string, created time.Time) {
@@ -144,4 +136,11 @@ func Is404(err error) bool {
 		}
 	}
 	return false
+}
+
+func IsRateLimit(err error) *github.Rate {
+	if err, ok := err.(*github.RateLimitError); ok {
+		return &err.Rate
+	}
+	return nil
 }
