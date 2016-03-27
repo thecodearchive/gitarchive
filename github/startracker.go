@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/oauth2"
+	"github.com/thecodearchive/gitarchive/lru"
 
-	"github.com/golang/groupcache/lru"
 	"github.com/google/go-github/github"
+	"golang.org/x/oauth2"
 )
 
 // StarTracker keeps track of how many stars a repository has. It keeps a huge
@@ -50,6 +50,7 @@ func NewStarTracker(maxSize int, gitHubToken string) *StarTracker {
 	s.expRateReset = new(expvar.String)
 	s.exp.Set("rateleft", s.expRateLeft)
 	s.exp.Set("ratereset", s.expRateReset)
+	// TODO: s.lru.Len() is racy
 	s.exp.Set("cachesize", expvar.Func(func() interface{} { return s.lru.Len() }))
 
 	return s
