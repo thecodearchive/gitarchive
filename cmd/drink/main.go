@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"expvar"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -34,10 +35,12 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
+	queuePath := flag.String("queue", "./queue.db", "clone queue path")
+	cachePath := flag.String("cache", "./cache.json", "startracker cache path")
 	camli.AddFlags()
 	flag.Parse()
-	if flag.NArg() < 2 {
-		log.Fatal("usage: drink json.gz queue.db")
+	if flag.NArg() < 1 {
+		log.Fatal("usage: drink json.gz")
 	}
 
 	uploader := camli.NewUploader()
@@ -47,6 +50,14 @@ func main() {
 	}
 	st := github.NewStarTracker(1000000000, os.Getenv("GITHUB_TOKEN"))
 	exp.Set("github", st.Expvar())
+
+	if f, err := os.Open(*cachePath); err != nil {
+		log.Println("[ ] Can't load StarTracker cache, starting empty")
+	} else {
+		log.Println("[+] Loaded StarTracker cache")
+		st.LoadCache(f)
+		f.Close()
+	}
 
 	var closing uint32
 	c := make(chan os.Signal, 1)
@@ -58,11 +69,18 @@ func main() {
 	}()
 
 	log.Println("[ ] Opening queue...")
-	q, err := queue.Open(flag.Arg(1))
+	q, err := queue.Open(*queuePath)
 	fatalIfErr(err)
+
 	defer func() {
 		log.Println("[ ] Closing queue...")
 		fatalIfErr(q.Close())
+
+		f, err := os.Create(*cachePath)
+		fatalIfErr(err)
+		log.Println("[ ] Writing StarTracker cache...")
+		st.SaveCache(f)
+		fatalIfErr(f.Close())
 	}()
 
 	log.Println("[ ] Opening archive...")
@@ -103,7 +121,7 @@ func main() {
 			stars, parent, err := st.Get(e.Repo.Name)
 			if rate := github.IsRateLimit(err); rate != nil {
 				exp.Add("ratehits", 1)
-				log.Println("Hit GitHub ratelimits, sleeping until", rate.Reset)
+				log.Println("[-] Hit GitHub ratelimits, sleeping until", rate.Reset)
 				interruptableSleep(rate.Reset.Sub(time.Now()))
 
 				// TODO: retry, both here and for the other "dropped" cases
@@ -148,10 +166,15 @@ func main() {
 
 		case "DeleteEvent":
 			// TODO
+
+		case "PublicEvent":
+			// TODO
 		}
 	}
 
 	log.Println("[+] Processed events until", expLatest)
+
+	fmt.Print(exp.String())
 }
 
 func fatalIfErr(err error) {
