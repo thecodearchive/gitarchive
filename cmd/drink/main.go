@@ -40,7 +40,7 @@ func main() {
 	camli.AddFlags()
 	flag.Parse()
 	if flag.NArg() < 1 {
-		log.Fatal("usage: drink json.gz")
+		log.Fatal("usage: drink 2016-01-02-15")
 	}
 
 	uploader := camli.NewUploader()
@@ -83,11 +83,13 @@ func main() {
 		fatalIfErr(f.Close())
 	}()
 
-	log.Println("[ ] Opening archive...")
-	f, err := os.Open(flag.Arg(0))
+	log.Println("[ ] Opening archive download...")
+	t, err := time.Parse(github.HourFormat, flag.Arg(0))
 	fatalIfErr(err)
-	defer f.Close()
-	r, err := github.NewTimelineArchiveReader(f)
+	a, err := github.DownloadArchive(t)
+	fatalIfErr(err)
+	defer a.Close()
+	r, err := github.NewTimelineArchiveReader(a)
 	fatalIfErr(err)
 	defer r.Close()
 
@@ -179,7 +181,7 @@ func main() {
 
 func fatalIfErr(err error) {
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err) // panic to let the defer run
 	}
 }
 
