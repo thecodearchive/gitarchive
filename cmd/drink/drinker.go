@@ -109,7 +109,7 @@ func (d *Drinker) handlePushEvent(e *github.Event) {
 	if rate := github.IsRateLimit(err); rate != nil {
 		d.exp.Add("ratehits", 1)
 		log.Println("[-] Hit GitHub ratelimits, sleeping until", rate.Reset)
-		if interruptableSleep(rate.Reset.Sub(time.Now())) {
+		if interruptableSleep(rate.Reset.Sub(time.Now()) + 1*time.Minute) {
 			log.Println("[+] Resuming...")
 			d.handlePushEvent(e)
 		}
