@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"time"
@@ -74,6 +75,7 @@ func DownloadArchive(t time.Time) (io.ReadCloser, error) {
 		return nil, err
 	}
 	if r.StatusCode == http.StatusNotFound {
+		io.Copy(ioutil.Discard, r.Body)
 		r.Body.Close()
 		return nil, nil
 	}

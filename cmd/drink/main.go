@@ -80,12 +80,36 @@ func main() {
 	t, err := time.Parse(github.HourFormat, flag.Arg(0))
 	fatalIfErr(err)
 
-	log.Println("[ ] Opening archive download...")
-	a, err := github.DownloadArchive(t)
-	fatalIfErr(err)
-	defer a.Close()
-	log.Println("[ ] Consuming...")
-	fatalIfErr(d.DrinkArchive(a))
+	startTime := t.Add(time.Hour).Add(2 * time.Minute)
+	for {
+		if time.Now().Before(startTime) {
+			log.Printf("[ ] Waiting for the %s archive until %s...",
+				t.Format(github.HourFormat), startTime)
+			if !interruptableSleep(startTime.Sub(time.Now())) {
+				break
+			}
+		}
+		log.Println("[ ] Opening archive download...")
+		a, err := github.DownloadArchive(t)
+		fatalIfErr(err) // TODO: make more graceful
+		if a == nil {
+			exp.Add("archives404", 1)
+			startTime = startTime.Add(2 * time.Minute)
+			continue
+		}
+
+		log.Printf("[+] Archive %s found, consuming...", t.Format(github.HourFormat))
+		err = d.DrinkArchive(a)
+		a.Close()
+		if err == StoppedError {
+			break
+		}
+		fatalIfErr(err) // TODO: make more graceful
+
+		exp.Add("archivesfinished", 1)
+		t = t.Add(time.Hour)
+		startTime = t.Add(time.Hour).Add(2 * time.Minute)
+	}
 
 	log.Println("[+] Processed events until", expLatest)
 	fmt.Print(exp.String())
