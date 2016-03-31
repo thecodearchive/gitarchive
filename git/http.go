@@ -14,7 +14,12 @@ import (
 func Fetch(gitURL string, haves map[string]string, uploader core.ObjectStorage,
 	msgW io.Writer) (refs map[string]string, caps []string, err error) {
 
-	resp, err := http.Get(gitURL + "/info/refs?service=git-upload-pack")
+	req, err := http.NewRequest("GET", gitURL+"/info/refs?service=git-upload-pack", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("User-Agent", "github.com/thecodearchive/gitarchive/git")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -72,12 +77,13 @@ func Fetch(gitURL string, haves map[string]string, uploader core.ObjectStorage,
 	}
 	body.WriteString("0009done\n")
 
-	req, err := http.NewRequest("POST", gitURL+"/git-upload-pack", body)
+	req, err = http.NewRequest("POST", gitURL+"/git-upload-pack", body)
 	if err != nil {
 		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-git-upload-pack-request")
 	req.Header.Set("Accept", "application/x-git-upload-pack-result")
+	req.Header.Set("User-Agent", "github.com/thecodearchive/gitarchive/git")
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, nil, err

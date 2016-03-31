@@ -46,6 +46,7 @@ func NewStarTracker(maxSize int, gitHubToken string) *StarTracker {
 	tc := oauth2.NewClient(oauth2.NoContext, ts)
 
 	s := &StarTracker{lru: lru.New(maxSize), gh: github.NewClient(tc)}
+	s.gh.UserAgent = "github.com/thecodearchive/gitarchive/github StarTracker"
 
 	s.exp = new(expvar.Map).Init()
 	s.expRateLeft = new(expvar.Int)
