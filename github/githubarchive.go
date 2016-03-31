@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/djherbis/buffer"
@@ -69,7 +70,11 @@ func DownloadArchive(t time.Time) (io.ReadCloser, error) {
 		},
 	}
 
+	// The githubarchive.org hour format is silly :(
 	hour := t.Format(HourFormat)
+	parts := strings.Split(hour, "-")
+	parts[len(parts)-1] = strings.TrimPrefix(parts[len(parts)-1], "0")
+	hour = strings.Join(parts, "-")
 	r, err := hc.Get("https://data.githubarchive.org/" + hour + ".json.gz")
 	if err != nil {
 		return nil, err
