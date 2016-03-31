@@ -3,8 +3,9 @@ package github
 import (
 	"flag"
 	"log"
-	"net/http"
 	"os"
+
+	"github.com/google/go-github/github"
 )
 
 // This file contains extra debugging code for a GitHub ratelimit bug
@@ -15,7 +16,10 @@ var (
 	lastRateReset string
 )
 
-func logGHRateReset(r *http.Response) {
+func logGHRateReset(r *github.Response) {
+	if r == nil {
+		return
+	}
 	if r.Header.Get("X-RateLimit-Reset") == lastRateReset {
 		return
 	}

@@ -78,7 +78,7 @@ func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 	t := time.Now()
 	s.exp.Add("apicalls", 1)
 	r, hr, err := s.gh.Repositories.Get(nameParts[0], nameParts[1])
-	logGHRateReset(hr.Response)
+	logGHRateReset(hr)
 	s.trackRate()
 	if err != nil {
 		return 0, "", err
