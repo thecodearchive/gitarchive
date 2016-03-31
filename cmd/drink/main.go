@@ -89,12 +89,12 @@ func main() {
 				break
 			}
 		}
-		log.Println("[ ] Opening archive download...")
+		log.Printf("[ ] Opening %s archive download...", t.Format(github.HourFormat))
 		a, err := github.DownloadArchive(t)
 		fatalIfErr(err) // TODO: make more graceful
 		if a == nil {
 			exp.Add("archives404", 1)
-			startTime = startTime.Add(2 * time.Minute)
+			startTime = time.Now().Add(2 * time.Minute)
 			continue
 		}
 
