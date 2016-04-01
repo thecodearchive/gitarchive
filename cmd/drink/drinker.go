@@ -80,7 +80,7 @@ func (d *Drinker) DrinkArchive(a io.Reader) error {
 			// TODO
 
 		case "PublicEvent":
-			// TODO
+			d.st.CreateEvent(e.Repo.Name, "", e.CreatedAt.Time)
 		}
 	}
 
