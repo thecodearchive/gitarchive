@@ -26,9 +26,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var haves map[string]string
+	haves := make(map[string]struct{})
 	if repo != nil {
-		haves = repo.Refs
+		for _, have := range repo.Refs {
+			haves[have] = struct{}{}
+		}
 	}
 
 	refs, caps, err := git.Fetch(url, haves, uploader, os.Stderr)

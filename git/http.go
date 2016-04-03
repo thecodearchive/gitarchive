@@ -11,7 +11,7 @@ import (
 	"gopkg.in/src-d/go-git.v3/core"
 )
 
-func Fetch(gitURL string, haves map[string]string, uploader core.ObjectStorage,
+func Fetch(gitURL string, haves map[string]struct{}, uploader core.ObjectStorage,
 	msgW io.Writer) (refs map[string]string, caps []string, err error) {
 
 	req, err := http.NewRequest("GET", gitURL+"/info/refs?service=git-upload-pack", nil)
@@ -38,14 +38,9 @@ func Fetch(gitURL string, haves map[string]string, uploader core.ObjectStorage,
 		}
 	}
 
-	havesSet := make(map[string]struct{})
-	for _, have := range haves {
-		havesSet[have] = struct{}{}
-	}
-
 	var wants []string
 	for name, ref := range refs {
-		if _, ok := havesSet[ref]; ok {
+		if _, ok := haves[ref]; ok {
 			continue
 		}
 		wants = append(wants, refs[name])
@@ -71,7 +66,7 @@ func Fetch(gitURL string, haves map[string]string, uploader core.ObjectStorage,
 		last = want
 	}
 	body.WriteString("0000")
-	for have := range havesSet { // TODO: sort the haves
+	for have := range haves { // TODO: sort the haves
 		command := "have " + have + "\n"
 		body.WriteString(fmt.Sprintf("%04x%s", len(command)+4, command))
 	}

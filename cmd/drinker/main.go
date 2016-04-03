@@ -13,6 +13,7 @@ import (
 
 	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/github"
+	"github.com/thecodearchive/gitarchive/metrics"
 	"github.com/thecodearchive/gitarchive/queue"
 )
 
@@ -23,10 +24,11 @@ func main() {
 
 	queuePath := flag.String("queue", "./queue.db", "clone queue path")
 	cachePath := flag.String("cache", "./cache.json", "startracker cache path")
+	influxAddr := flag.String("influx", "http://localhost:8086", "InfluxDB address")
 	camli.AddFlags()
 	flag.Parse()
 	if flag.NArg() < 1 {
-		log.Fatal("usage: drink 2016-01-02-15")
+		log.Fatal("usage: drinker 2016-01-02-15")
 	}
 
 	if os.Getenv("GITHUB_TOKEN") == "" {
@@ -57,12 +59,15 @@ func main() {
 		fatalIfErr(f.Close())
 	}()
 
-	exp := expvar.NewMap("drink")
+	exp := expvar.NewMap("drinker")
 	expEvents := new(expvar.Map).Init()
 	expLatest := new(expvar.String)
 	exp.Set("latestevent", expLatest)
 	exp.Set("events", expEvents)
 	exp.Set("github", st.Expvar())
+
+	err = metrics.StartInfluxExport(*influxAddr, "drinker", exp)
+	fatalIfErr(err)
 
 	d := &Drinker{
 		q: q, st: st, u: camli.NewUploader(),
