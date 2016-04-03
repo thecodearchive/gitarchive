@@ -22,3 +22,10 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+GITHUB_TOKEN
+*.exp.json
+cache.json*
+github.txt*
+queue.db*
+/bin
