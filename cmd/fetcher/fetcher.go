@@ -9,8 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go4.org/types"
-
 	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/git"
 	"github.com/thecodearchive/gitarchive/queue"
@@ -91,7 +89,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 
 	return f.u.PutRepo(&camli.Repo{
 		Name:      url,
-		Retrieved: types.Time3339(time.Now()),
+		Retrieved: time.Now(),
 		Refs:      res.Refs,
 	})
 }

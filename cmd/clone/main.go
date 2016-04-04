@@ -7,8 +7,6 @@ import (
 	"os"
 	"time"
 
-	"go4.org/types"
-
 	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/git"
 )
@@ -40,7 +38,7 @@ func main() {
 
 	err = uploader.PutRepo(&camli.Repo{
 		Name:      url,
-		Retrieved: types.Time3339(time.Now()),
+		Retrieved: time.Now(),
 		Refs:      res.Refs,
 	})
 	if err != nil {
