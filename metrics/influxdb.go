@@ -37,6 +37,10 @@ func StartInfluxExport(addr, table string, v *expvar.Map) error {
 				}
 			}
 
+			if len(fields) == 0 {
+				continue
+			}
+
 			bp, _ := client.NewBatchPoints(client.BatchPointsConfig{
 				Database:  "gitarchive",
 				Precision: "s",
