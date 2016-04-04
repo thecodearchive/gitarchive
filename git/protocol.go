@@ -14,20 +14,20 @@ import (
 
 var GitParseError = errors.New("failed parsing the git protocol")
 
-func ParseSmartResponse(body io.Reader) (refs map[string]string, caps []string, err error) {
+func ParseSmartResponse(body io.Reader) (refs map[string]string, err error) {
 	// https://github.com/git/git/blob/master/Documentation/technical/http-protocol.txt
 	refs = make(map[string]string)
 	state := "service-header"
 	for {
 		pktLenHex := make([]byte, 4)
 		if _, err := io.ReadFull(body, pktLenHex); err == io.EOF {
-			return refs, caps, nil
+			return refs, nil
 		} else if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		pktLen, err := strconv.ParseUint(string(pktLenHex), 16, 16)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		// "0000" marker
@@ -37,7 +37,7 @@ func ParseSmartResponse(body io.Reader) (refs map[string]string, caps []string, 
 
 		lineBuf := make([]byte, pktLen-4)
 		if _, err := io.ReadFull(body, lineBuf); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		line := string(lineBuf)
 		if len(line) > 0 && line[len(line)-1] == '\n' {
@@ -47,30 +47,30 @@ func ParseSmartResponse(body io.Reader) (refs map[string]string, caps []string, 
 		switch state {
 		case "service-header":
 			if line != "# service=git-upload-pack" {
-				return nil, nil, GitParseError
+				return nil, GitParseError
 			}
 			state = "head"
 
 		case "head":
 			parts := strings.SplitN(line, "\x00", 2)
 			if len(parts) != 2 {
-				return nil, nil, GitParseError
+				return nil, GitParseError
 			}
 
 			refParts := strings.SplitN(parts[0], " ", 2)
 			if len(refParts) != 2 {
-				return nil, nil, GitParseError
+				return nil, GitParseError
 			}
 			refs[refParts[1]] = refParts[0]
 
-			caps = strings.Split(parts[1], " ")
+			// caps = strings.Split(parts[1], " ")
 
 			state = "ref-list"
 
 		case "ref-list":
 			refParts := strings.SplitN(line, " ", 2)
 			if len(refParts) != 2 {
-				return nil, nil, GitParseError
+				return nil, GitParseError
 			}
 			refs[refParts[1]] = refParts[0]
 
@@ -80,15 +80,16 @@ func ParseSmartResponse(body io.Reader) (refs map[string]string, caps []string, 
 	}
 }
 
-func ParseUploadPackResponse(body io.Reader, uploader core.ObjectStorage, msgW io.Writer) (err error) {
+func ParseUploadPackResponse(body io.Reader, uploader core.ObjectStorage, msgW io.Writer) (int64, error) {
 	r := &sideBandReader{Upstream: body, MsgW: msgW}
-	packReader := packfile.NewReader(r)
+	cr := &countingReader{Upstream: r}
+	packReader := packfile.NewReader(cr)
 	packReader.MaxObjectsLimit = math.MaxUint32
-	_, err = packReader.Read(uploader)
+	_, err := packReader.Read(uploader)
 	if r.Errors != nil {
 		err = fmt.Errorf("remote error: %s", r.Errors)
 	}
-	return
+	return cr.BytesRead, err
 }
 
 type sideBandReader struct {
@@ -144,4 +145,15 @@ func (s *sideBandReader) Read(p []byte) (n int, err error) {
 			s.Errors = append(s.Errors, pkt[1:]...)
 		}
 	}
+}
+
+type countingReader struct {
+	Upstream  io.Reader
+	BytesRead int64
+}
+
+func (r *countingReader) Read(p []byte) (n int, err error) {
+	n, err = r.Upstream.Read(p)
+	r.BytesRead += int64(n)
+	return
 }

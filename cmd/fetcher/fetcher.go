@@ -84,7 +84,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	}
 	log.Printf("[+] %s %s%s...", logVerb, name, logFork)
 
-	refs, _, err := git.Fetch(url, haves, f.u, os.Stderr)
+	res, err := git.Fetch(url, haves, f.u, os.Stderr)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	return f.u.PutRepo(&camli.Repo{
 		Name:      url,
 		Retrieved: types.Time3339(time.Now()),
-		Refs:      refs,
+		Refs:      res.Refs,
 	})
 }
 

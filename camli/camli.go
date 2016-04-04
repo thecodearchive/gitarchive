@@ -58,7 +58,7 @@ func gitBlobReader(obj core.Object) (io.Reader, uint32) {
 }
 
 // PutObject uploads a blob to Camlistore.
-func (u *Uploader) PutObject(obj core.Object) error {
+func (u *Uploader) PutObject(obj core.Object) (bool, error) {
 	sum := [20]byte(obj.Hash())
 	r, size := gitBlobReader(obj)
 	result, err := u.c.Upload(&client.UploadHandle{
@@ -67,14 +67,9 @@ func (u *Uploader) PutObject(obj core.Object) error {
 		Contents: r,
 	})
 	if err != nil {
-		return fmt.Errorf("couldn't store %x: %v", sum, err)
+		return false, fmt.Errorf("couldn't store %x: %v", sum, err)
 	}
-	if result.Skipped {
-		log.Printf("object %x already on the server", sum)
-	} else {
-		log.Printf("stored object: %x", sum)
-	}
-	return nil
+	return result.Skipped, nil
 }
 
 // Repo represets is our Camlistore scheme to model the state of a
@@ -207,7 +202,8 @@ func (u *Uploader) New() (core.Object, error) {
 }
 
 func (u *Uploader) Set(obj core.Object) (core.Hash, error) {
-	return obj.Hash(), u.PutObject(obj)
+	_, err := u.PutObject(obj)
+	return obj.Hash(), err
 }
 
 func (u *Uploader) Get(hash core.Hash) (core.Object, error) {

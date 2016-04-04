@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"time"
@@ -33,19 +32,16 @@ func main() {
 		}
 	}
 
-	refs, caps, err := git.Fetch(url, haves, uploader, os.Stderr)
+	res, err := git.Fetch(url, haves, uploader, os.Stderr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	x, _ := json.Marshal(caps)
-	fmt.Fprintf(os.Stderr, "%s\n", x)
-	x, _ = json.Marshal(refs)
-	fmt.Fprintf(os.Stderr, "%s\n", x)
+	json.NewEncoder(os.Stdout).Encode(res)
 
 	err = uploader.PutRepo(&camli.Repo{
 		Name:      url,
 		Retrieved: types.Time3339(time.Now()),
-		Refs:      refs,
+		Refs:      res.Refs,
 	})
 	if err != nil {
 		log.Fatal(err)
