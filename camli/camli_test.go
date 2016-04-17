@@ -3,7 +3,6 @@ package camli
 import (
 	"bytes"
 	"encoding/hex"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -11,28 +10,7 @@ import (
 
 	"camlistore.org/pkg/blobserver/dir"
 	"camlistore.org/pkg/client"
-
-	"gopkg.in/src-d/go-git.v3/core"
 )
-
-// These tests require a local running instance of Camlistore.
-// `devam server -wipe` should work.
-
-// object implements core.Object for testing purposes.
-// TODO maybe move away from this go-git package...
-type object struct {
-	hash     [20]byte
-	contents []byte
-	objtype  core.ObjectType
-}
-
-func (o *object) Hash() core.Hash         { return o.hash }
-func (o *object) Type() core.ObjectType   { return o.objtype }
-func (o *object) Size() int64             { return int64(len(o.contents)) }
-func (o *object) Reader() io.Reader       { return bytes.NewBuffer(o.contents) }
-func (o *object) SetType(core.ObjectType) {}             // Nope.
-func (o *object) SetSize(int64)           {}             // Nope.
-func (o *object) Writer() io.Writer       { return nil } // Nope.
 
 func strtohash(s string) [20]byte {
 	bs, err := hex.DecodeString(s)
@@ -70,22 +48,9 @@ func testWithTempDir(t *testing.T, fn func(tempDir string)) {
 }
 
 func TestPutBlobs(t *testing.T) {
-	objects := []*object{
-		{
-			contents: []byte("hello"),
-			objtype:  core.TreeObject,
-			hash:     strtohash("cbb918f93e0b6cdc9632f3ce0f94805cd7c3b498"),
-		},
-		{
-			contents: []byte("just"),
-			objtype:  core.CommitObject,
-			hash:     strtohash("7343b97e4d39e53a6befe9556a7ee65534569138"),
-		},
-		{
-			contents: []byte("testing\nthis"),
-			objtype:  core.BlobObject,
-			hash:     strtohash("9bedb58b7cf0116f4e7994971b291ddb7cfb2539"),
-		},
+	objects := []string{
+		"hello",
+		"hi", "test\ning",
 	}
 
 	testWithTempDir(t, func(tempDir string) {
@@ -101,10 +66,25 @@ func TestPutBlobs(t *testing.T) {
 			c: client.NewStorageClient(ss),
 		}
 
-		for _, o := range objects {
-			err := uploader.PutObject(o)
+		refs := make([]string, len(objects))
+		for i := range objects {
+			refs[i], err = uploader.PutObject(bytes.NewBufferString(objects[i]))
 			if err != nil {
 				t.Errorf("Couldn't put an object: %v", err)
+			}
+		}
+
+		for i := range objects {
+			r, err := uploader.GetObject(refs[i])
+			if err != nil {
+				t.Errorf("Couldn't get an object: %v", err)
+			}
+			contents, err := ioutil.ReadAll(r)
+			if err != nil {
+				t.Errorf("Couldn't read object: %v", err)
+			}
+			if string(contents) != objects[i] {
+				t.Errorf("Got back unexpected contents. got: %s want: %s", string(contents), objects[i])
 			}
 		}
 

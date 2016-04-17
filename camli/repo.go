@@ -21,6 +21,7 @@ type Repo struct {
 	Parent    string
 	Retrieved time.Time
 	Refs      map[string]string
+	Packfiles map[string]string
 }
 
 // PutRepo stores a Repo in Camlistore.
@@ -29,18 +30,24 @@ func (u *Uploader) PutRepo(r *Repo) error {
 	bb.SetType("git-repo")
 	bb.SetRawStringField("parent", r.Parent)
 	bb.SetRawStringField("retrieved", schema.RFC3339FromTime(r.Retrieved))
-	if refs, err := json.Marshal(r.Refs); err != nil {
-		return err
-	} else {
+	if refs, err := json.Marshal(r.Refs); err == nil {
 		// TODO The builder just escapes this. We need the actual map as a
 		// json object.
 		bb.SetRawStringField("refs", string(refs))
+	} else {
+		return err
+	}
+	if packfiles, err := json.Marshal(r.Packfiles); err == nil {
+		// TODO The builder just escapes this. We need the actual map as a
+		// json object.
+		bb.SetRawStringField("packfiles", string(packfiles))
+	} else {
+		return err
 	}
 
 	j := bb.Blob().JSON()
 	reporef := blob.SHA1FromString(j)
 	_, err := uploadString(u.c, reporef, j)
-	// TODO upload asynchronously?
 
 	log.Printf("stored repo: %s on %s", r.Name, reporef)
 
