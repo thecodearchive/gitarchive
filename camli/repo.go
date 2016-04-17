@@ -30,17 +30,13 @@ func (u *Uploader) PutRepo(r *Repo) error {
 	bb.SetType("git-repo")
 	bb.SetRawStringField("parent", r.Parent)
 	bb.SetRawStringField("retrieved", schema.RFC3339FromTime(r.Retrieved))
-	if refs, err := json.Marshal(r.Refs); err == nil {
-		// TODO The builder just escapes this. We need the actual map as a
-		// json object.
-		bb.SetRawStringField("refs", string(refs))
+	if refs, err := schema.NewJSONObject(r.Refs); err == nil {
+		bb.SetRawField("refs", refs)
 	} else {
 		return err
 	}
-	if packfiles, err := json.Marshal(r.Packfiles); err == nil {
-		// TODO The builder just escapes this. We need the actual map as a
-		// json object.
-		bb.SetRawStringField("packfiles", string(packfiles))
+	if packfiles, err := schema.NewJSONObject(r.Packfiles); err == nil {
+		bb.SetRawField("packfiles", packfiles)
 	} else {
 		return err
 	}
