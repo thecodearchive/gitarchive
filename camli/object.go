@@ -17,7 +17,6 @@ import (
 func (u *Uploader) PutObject(r io.Reader) (ref string, err error) {
 	bb := schema.NewBuilder()
 	bb.SetType("bytes")
-	//bb.SetRawStringField("sha1", sha)
 	br, err := schema.WriteFileMap(u.c, bb, r)
 	return br.String(), err
 }

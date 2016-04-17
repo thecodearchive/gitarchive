@@ -21,7 +21,7 @@ type Repo struct {
 	Parent    string
 	Retrieved time.Time
 	Refs      map[string]string
-	Packfiles map[string]string
+	Packfiles []string
 }
 
 // PutRepo stores a Repo in Camlistore.
