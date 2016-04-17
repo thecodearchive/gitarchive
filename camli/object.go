@@ -11,17 +11,19 @@ import (
 	"camlistore.org/pkg/schema"
 )
 
-// PutObject uploads a blob to Camlistore.
-func (u *Uploader) PutObject(r io.Reader) (string, error) {
+// PutObject uploads a blob, using the "bytes" schema. This will split the
+// blob into smaller ones to help with deduplication and obey Camlistore
+// blob size limit.
+func (u *Uploader) PutObject(r io.Reader) (ref string, err error) {
 	bb := schema.NewBuilder()
 	bb.SetType("bytes")
 	//bb.SetRawStringField("sha1", sha)
-	ref, err := schema.WriteFileMap(u.c, bb, r)
-	return ref.String(), err
+	br, err := schema.WriteFileMap(u.c, bb, r)
+	return br.String(), err
 }
 
-// PutObject uploads a blob to Camlistore.
-func (u *Uploader) GetObject(ref string) (*schema.FileReader, error) {
+// GetObject returns a reader for the "bytes" blob referenced by ref.
+func (u *Uploader) GetObject(ref string) (r *schema.FileReader, err error) {
 	br, ok := blob.Parse(ref)
 	if ok {
 		return schema.NewFileReader(u.c, br)
