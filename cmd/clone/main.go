@@ -41,11 +41,14 @@ func main() {
 	}
 	json.NewEncoder(os.Stdout).Encode(res)
 
+	if res.PackRef != "" {
+		packfiles = append(packfiles, res.PackRef)
+	}
 	err = uploader.PutRepo(&camli.Repo{
 		Name:      url,
 		Retrieved: time.Now(),
 		Refs:      res.Refs,
-		Packfiles: append(packfiles, res.PackRef),
+		Packfiles: packfiles,
 	})
 	if err != nil {
 		log.Fatal(err)

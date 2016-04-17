@@ -51,12 +51,12 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	}
 
 	haves := make(map[string]struct{})
-	var oldPackfiles []string
+	var packfiles []string
 	if repo != nil {
 		for _, have := range repo.Refs {
 			haves[have] = struct{}{}
 		}
-		oldPackfiles = repo.Packfiles
+		packfiles = repo.Packfiles
 	}
 
 	// On first clone of a fork, import all parent's refs and packs.
@@ -72,7 +72,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 			for _, have := range mainRepo.Refs {
 				haves[have] = struct{}{}
 			}
-			oldPackfiles = mainRepo.Packfiles
+			packfiles = mainRepo.Packfiles
 		}
 	}
 
@@ -90,11 +90,14 @@ func (f *Fetcher) Fetch(name, parent string) error {
 		return err
 	}
 
+	if res.PackRef != "" {
+		packfiles = append(packfiles, res.PackRef)
+	}
 	return f.u.PutRepo(&camli.Repo{
 		Name:      url,
 		Retrieved: time.Now(),
 		Refs:      res.Refs,
-		Packfiles: append(oldPackfiles, res.PackRef),
+		Packfiles: packfiles,
 	})
 }
 

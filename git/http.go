@@ -13,7 +13,6 @@ import (
 
 type FetchResult struct {
 	Refs    map[string]string
-	Wants   []string
 	PackRef string
 
 	BytesFetched int64
@@ -56,8 +55,7 @@ func Fetch(gitURL string, haves map[string]struct{}, uploader *camli.Uploader,
 	sort.Strings(wants)
 
 	res := &FetchResult{
-		Refs:  refs,
-		Wants: wants,
+		Refs: refs,
 	}
 
 	if len(wants) == 0 {
@@ -102,5 +100,8 @@ func Fetch(gitURL string, haves map[string]struct{}, uploader *camli.Uploader,
 	}
 
 	res.PackRef, res.BytesFetched, err = ParseUploadPackResponse(resp.Body, uploader, msgW)
+	if res.BytesFetched == 32 { // empty packfile (hdr is 12, trailer is 20)
+		res.PackRef = ""
+	}
 	return res, err
 }
