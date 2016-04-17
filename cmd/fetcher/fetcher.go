@@ -51,16 +51,18 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	}
 
 	haves := make(map[string]struct{})
+	var oldPackfiles []string
 	if repo != nil {
 		for _, have := range repo.Refs {
 			haves[have] = struct{}{}
 		}
+		oldPackfiles = repo.Packfiles
 	}
 
-	// TODO: benchmark not adding the parent to the haves when we have cloned
-	// the repo before, as it might trigger more optimizations on the server
-	// side, even if it causes more bandwidth in fork syncs
-	if parent != "" {
+	// On first clone of a fork, import all parent's refs and packs.
+	// TODO: we might want to experiment with always merging refs and packs.
+	// Smaller and faster fetches, but possibly a lot of waste in serving clones.
+	if parent != "" && repo == nil {
 		mainURL := "https://github.com/" + parent + ".git"
 		mainRepo, err := f.u.GetRepo(mainURL)
 		if err != nil {
@@ -70,6 +72,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 			for _, have := range mainRepo.Refs {
 				haves[have] = struct{}{}
 			}
+			oldPackfiles = mainRepo.Packfiles
 		}
 	}
 
@@ -91,6 +94,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 		Name:      url,
 		Retrieved: time.Now(),
 		Refs:      res.Refs,
+		Packfiles: append(oldPackfiles, res.PackRef),
 	})
 }
 

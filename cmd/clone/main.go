@@ -30,6 +30,11 @@ func main() {
 		}
 	}
 
+	var packfiles []string
+	if repo != nil {
+		packfiles = repo.Packfiles
+	}
+
 	res, err := git.Fetch(url, haves, uploader, os.Stderr)
 	if err != nil {
 		log.Fatal(err)
@@ -40,6 +45,7 @@ func main() {
 		Name:      url,
 		Retrieved: time.Now(),
 		Refs:      res.Refs,
+		Packfiles: append(packfiles, res.PackRef),
 	})
 	if err != nil {
 		log.Fatal(err)

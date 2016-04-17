@@ -4,12 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"strconv"
 	"strings"
 
-	"gopkg.in/src-d/go-git.v3/core"
-	"gopkg.in/src-d/go-git.v3/formats/packfile"
+	"github.com/thecodearchive/gitarchive/camli"
 )
 
 var GitParseError = errors.New("failed parsing the git protocol")
@@ -80,16 +78,14 @@ func ParseSmartResponse(body io.Reader) (refs map[string]string, err error) {
 	}
 }
 
-func ParseUploadPackResponse(body io.Reader, uploader core.ObjectStorage, msgW io.Writer) (int64, error) {
+func ParseUploadPackResponse(body io.Reader, uploader *camli.Uploader, msgW io.Writer) (string, int64, error) {
 	r := &sideBandReader{Upstream: body, MsgW: msgW}
 	cr := &countingReader{Upstream: r}
-	packReader := packfile.NewReader(cr)
-	packReader.MaxObjectsLimit = math.MaxUint32
-	_, err := packReader.Read(uploader)
+	ref, err := uploader.PutObject(cr)
 	if r.Errors != nil {
 		err = fmt.Errorf("remote error: %s", r.Errors)
 	}
-	return cr.BytesRead, err
+	return ref, cr.BytesRead, err
 }
 
 type sideBandReader struct {

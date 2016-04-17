@@ -8,46 +8,15 @@ import (
 	"sort"
 	"strings"
 
-	"gopkg.in/src-d/go-git.v3/core"
-
 	"github.com/thecodearchive/gitarchive/camli"
 )
 
 type FetchResult struct {
-	Refs  map[string]string
-	Wants []string
+	Refs    map[string]string
+	Wants   []string
+	PackRef string
 
-	ObjectsGet, ObjectsSet, ObjectsSkipped int
-	BytesSet, BytesFetched                 int64
-}
-
-type trackingUploader struct {
-	uploader *camli.Uploader
-	r        *FetchResult
-}
-
-func (f *trackingUploader) New() (core.Object, error) {
-	return f.uploader.New()
-}
-
-func (f *trackingUploader) Set(obj core.Object) (core.Hash, error) {
-	skipped, err := f.uploader.PutObject(obj)
-	if skipped && err == nil {
-		f.r.ObjectsSkipped += 1
-	} else if err == nil {
-		f.r.ObjectsSet += 1
-		f.r.BytesSet += obj.Size()
-	}
-	return obj.Hash(), err
-}
-
-func (f *trackingUploader) Get(hash core.Hash) (core.Object, error) {
-	f.r.ObjectsGet += 1
-	return f.uploader.Get(hash)
-}
-
-func (f *trackingUploader) Iter(core.ObjectType) core.ObjectIter {
-	panic("FetchResult.Iter called")
+	BytesFetched int64
 }
 
 func Fetch(gitURL string, haves map[string]struct{}, uploader *camli.Uploader,
@@ -131,10 +100,7 @@ func Fetch(gitURL string, haves map[string]struct{}, uploader *camli.Uploader,
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("POST /git-upload-pack: %d", resp.StatusCode)
 	}
-	res.BytesFetched = resp.ContentLength
 
-	tu := &trackingUploader{uploader: uploader, r: res}
-	res.BytesFetched, err = ParseUploadPackResponse(resp.Body, tu, msgW)
-
+	res.PackRef, res.BytesFetched, err = ParseUploadPackResponse(resp.Body, uploader, msgW)
 	return res, err
 }
