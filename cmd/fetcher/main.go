@@ -9,6 +9,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/metrics"
@@ -20,13 +21,17 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	queuePath := flag.String("queue", "./queue.db", "clone queue path")
+	queuePath := flag.String("queue", "./queue.db", "clone queue path or DSN")
 	influxAddr := flag.String("influx", "http://localhost:8086", "InfluxDB address")
 	camli.AddFlags()
 	flag.Parse()
 
-	log.Println("[ ] Opening queue...")
-	q, err := queue.Open(*queuePath)
+	qDriver := "sqlite3"
+	if strings.Index(*queuePath, "@") != -1 {
+		qDriver = "mysql"
+	}
+	log.Printf("[ ] Opening queue (%s)...", qDriver)
+	q, err := queue.Open(qDriver, *queuePath)
 	fatalIfErr(err)
 
 	defer func() {

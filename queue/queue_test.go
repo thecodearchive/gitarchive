@@ -10,7 +10,7 @@ import (
 
 func fatalIfErr(t *testing.T, err error) {
 	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 }
 
@@ -25,8 +25,22 @@ func checkNAndP(t *testing.T, wantN, wantP, n, p string) {
 
 func TestQueue(t *testing.T) {
 	os.Remove("./test.db")
-	q, err := Open("./test.db")
+	q, err := Open("sqlite3", "./test.db")
 	fatalIfErr(t, err)
+	testQueue(t, q)
+	fatalIfErr(t, os.Remove("./test.db"))
+}
+
+func TestQueueMySQL(t *testing.T) {
+	if os.Getenv("TEST_MYSQL_DSN") == "" {
+		t.Skip("TEST_MYSQL_DSN missing, skipping MySQL test")
+	}
+	q, err := Open("mysql", os.Getenv("TEST_MYSQL_DSN"))
+	fatalIfErr(t, err)
+	testQueue(t, q)
+}
+
+func testQueue(t *testing.T, q *Queue) {
 	n, p, err := q.Pop()
 	fatalIfErr(t, err)
 	checkNAndP(t, "", "", n, p)
@@ -47,7 +61,6 @@ func TestQueue(t *testing.T) {
 	fatalIfErr(t, err)
 	checkNAndP(t, "", "", n, p)
 	fatalIfErr(t, q.Close())
-	fatalIfErr(t, os.Remove("./test.db"))
 }
 
 func waitForValue(t *testing.T, q *Queue, wantN, wantP string) {
@@ -66,7 +79,7 @@ func waitForValue(t *testing.T, q *Queue, wantN, wantP string) {
 
 func TestQueueConcurrency(t *testing.T) {
 	if os.Getenv("BE_ADDER") == "1" {
-		q, err := Open("./test_concurr.db")
+		q, err := Open("sqlite3", "./test_concurr.db")
 		fatalIfErr(t, err)
 		for {
 			fatalIfErr(t, q.Add("a", ""))
@@ -75,7 +88,7 @@ func TestQueueConcurrency(t *testing.T) {
 	}
 
 	os.Remove("./test_concurr.db")
-	q, err := Open("./test_concurr.db")
+	q, err := Open("sqlite3", "./test_concurr.db")
 	fatalIfErr(t, err)
 
 	n, p, err := q.Pop()

@@ -2,7 +2,9 @@ package queue
 
 import (
 	"database/sql"
+	"fmt"
 
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -22,8 +24,8 @@ type Queue struct {
 	deleteQ *sql.Stmt
 }
 
-func Open(path string) (*Queue, error) {
-	db, err := sql.Open("sqlite3", path)
+func Open(driverName, dataSourceName string) (*Queue, error) {
+	db, err := sql.Open(driverName, dataSourceName)
 	if err != nil {
 		return nil, err
 	}
@@ -32,23 +34,30 @@ func Open(path string) (*Queue, error) {
 
 	query := `CREATE TABLE IF NOT EXISTS Queue (
         ID INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT UNIQUE NOT NULL, Parent TEXT)`
+	if driverName == "mysql" {
+		query = `CREATE TABLE IF NOT EXISTS Queue (
+		ID INTEGER PRIMARY KEY AUTO_INCREMENT, Name VARCHAR(256) UNIQUE NOT NULL, Parent VARCHAR(256))`
+	}
 	if _, err = db.Exec(query); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("table creation failed: %s", err)
 	}
 
 	query = `INSERT OR IGNORE INTO Queue (Name, Parent) VALUES (?, ?)`
+	if driverName == "mysql" {
+		query = `INSERT INTO Queue (Name, Parent) VALUES (?, ?) ON DUPLICATE KEY UPDATE Name=VALUES(Name)`
+	}
 	if q.insertQ, err = db.Prepare(query); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("insert preparation failed: %s", err)
 	}
 
 	query = `SELECT ID, Name, Parent FROM Queue ORDER BY ID ASC LIMIT 1`
 	if q.selectQ, err = db.Prepare(query); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("select preparation failed: %s", err)
 	}
 
 	query = `DELETE FROM Queue WHERE ID = ?`
 	if q.deleteQ, err = db.Prepare(query); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("delete preparation failed: %s", err)
 	}
 
 	return q, nil
