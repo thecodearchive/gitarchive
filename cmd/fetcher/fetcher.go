@@ -31,6 +31,7 @@ func (f *Fetcher) Run() error {
 		}
 
 		if name == "" {
+			f.exp.Add("sleeps", 1)
 			interruptableSleep(30 * time.Second)
 			continue
 		}
@@ -43,8 +44,9 @@ func (f *Fetcher) Run() error {
 }
 
 func (f *Fetcher) Fetch(name, parent string) error {
-	url := "https://github.com/" + name + ".git"
+	f.exp.Add("fetches", 1)
 
+	url := "https://github.com/" + name + ".git"
 	repo, err := f.u.GetRepo(url)
 	if err != nil {
 		return err
@@ -57,12 +59,15 @@ func (f *Fetcher) Fetch(name, parent string) error {
 			haves[have] = struct{}{}
 		}
 		packfiles = repo.Packfiles
+	} else {
+		f.exp.Add("new", 1)
 	}
 
 	// On first clone of a fork, import all parent's refs and packs.
 	// TODO: we might want to experiment with always merging refs and packs.
 	// Smaller and faster fetches, but possibly a lot of waste in serving clones.
 	if parent != "" && repo == nil {
+		f.exp.Add("forks", 1)
 		mainURL := "https://github.com/" + parent + ".git"
 		mainRepo, err := f.u.GetRepo(mainURL)
 		if err != nil {
@@ -85,13 +90,18 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	}
 	log.Printf("[+] %s %s%s...", logVerb, name, logFork)
 
+	start := time.Now()
 	res, err := git.Fetch(url, haves, f.u, os.Stderr)
 	if err != nil {
 		return err
 	}
+	f.exp.Add("fetchtime", int64(time.Since(start)))
+	f.exp.Add("fetchbytes", res.BytesFetched)
 
 	if res.PackRef != "" {
 		packfiles = append(packfiles, res.PackRef)
+	} else {
+		f.exp.Add("empty", 1)
 	}
 	return f.u.PutRepo(&camli.Repo{
 		Name:      url,
