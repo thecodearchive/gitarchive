@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: camli
+  labels:
+    name: camli
+spec:
+  ports:
+  - port: 3179
+  selector:
+    name: camli

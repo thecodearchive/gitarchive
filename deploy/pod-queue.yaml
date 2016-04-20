@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: queue
+  labels:
+    name: queue
+spec:
+  containers:
+  - name: mysql
+    image: mysql
+    ports:
+    - containerPort: 3306
+    volumeMounts:
+    - name: mysql-persistent-storage
+      mountPath: /var/lib/mysql
+    env:
+    - name: MYSQL_DATABASE
+      value: gitarchive
+    - name: MYSQL_ROOT_PASSWORD
+      value: toor # huh, so what?
+    resources:
+      requests:
+        cpu: "100m"
+      limits:
+        cpu: "200m"
+  volumes:
+  - name: mysql-persistent-storage
+    emptyDir: {}

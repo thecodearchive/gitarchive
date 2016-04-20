@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: camli
+  labels:
+    name: camli
+spec:
+  containers:
+  - name: camli
+    image: gcr.io/code-archive/camlistored
+    ports:
+    - containerPort: 3179
+    volumeMounts:
+    - name: camli-secring
+      mountPath: /data/secring
+      readOnly: true
+    resources:
+      requests:
+        cpu: "400m"
+  volumes:
+  - name: camli-secring
+    secret:
+      secretName: camli-secring
