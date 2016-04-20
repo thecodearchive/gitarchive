@@ -14,9 +14,6 @@ spec:
       readOnly: true
     - name: drinker-cache
       mountPath: /cache
-    - name: ssl-certs
-      mountPath: /etc/ssl/certs
-      readOnly: true
     env:
     - name: GITHUB_TOKEN
       valueFrom:
@@ -32,6 +29,3 @@ spec:
       secretName: camli-secring
   - name: drinker-cache
     emptyDir: {}
-  - name: ssl-certs
-    hostPath:
-      path: /etc/ssl/certs
