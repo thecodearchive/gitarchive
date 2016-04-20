@@ -4,6 +4,7 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -25,11 +26,24 @@ func main() {
 
 	queuePath := flag.String("queue", "./queue.db", "clone queue path or DSN")
 	cachePath := flag.String("cache", "./cache.json", "startracker cache path")
+	resumePath := flag.String("resume", "./resume.txt", "resume hour file")
 	influxAddr := flag.String("influx", "http://localhost:8086", "InfluxDB address")
 	camli.AddFlags()
 	flag.Parse()
-	if flag.NArg() < 1 {
-		log.Fatal("usage: drinker 2016-01-02-15")
+	if flag.NArg() > 0 {
+		log.Fatal("drinker takes no arguments")
+	}
+
+	var t time.Time
+	resume, err := ioutil.ReadFile(*resumePath)
+	if os.IsNotExist(err) {
+		t = time.Now().Truncate(time.Hour).Add(-12 * time.Hour)
+		log.Println("[ ] Can't load resume file, starting 12 hours ago")
+	} else {
+		fatalIfErr(err)
+		t, err = time.Parse(github.HourFormat, string(resume))
+		fatalIfErr(err)
+		log.Printf("[+] Resuming from %s", t.Format(github.HourFormat))
 	}
 
 	if os.Getenv("GITHUB_TOKEN") == "" {
@@ -90,9 +104,6 @@ func main() {
 		d.Stop()
 	}()
 
-	t, err := time.Parse(github.HourFormat, flag.Arg(0))
-	fatalIfErr(err)
-
 	startTime := t.Add(time.Hour).Add(2 * time.Minute)
 	for {
 		if time.Now().Before(startTime) {
@@ -121,6 +132,7 @@ func main() {
 
 		exp.Add("archivesfinished", 1)
 		t = t.Add(time.Hour)
+		fatalIfErr(ioutil.WriteFile(*resumePath, []byte(t.Format(github.HourFormat)), 0664))
 		startTime = t.Add(time.Hour).Add(2 * time.Minute)
 	}
 
