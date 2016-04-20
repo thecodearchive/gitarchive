@@ -18,14 +18,16 @@ type Uploader struct {
 }
 
 // NewUploader returns a git blob uploader.
-func NewUploader() *Uploader {
+func NewUploader() (*Uploader, error) {
 	c := client.NewOrFail(
 		client.OptionTransportConfig(
 			&client.TransportConfig{}))
 	stats := c.HTTPStats()
 
-	return &Uploader{
+	u := &Uploader{
 		c:     c,
 		stats: stats,
 	}
+	_, err := u.GetRepo("https://github.com/thecodearchive/gitarchive.git")
+	return u, err
 }

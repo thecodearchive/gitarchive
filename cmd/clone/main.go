@@ -16,7 +16,10 @@ func main() {
 	flag.Parse()
 	url := flag.Arg(0)
 
-	uploader := camli.NewUploader()
+	uploader, err := camli.NewUploader()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	repo, err := uploader.GetRepo(url)
 	if err != nil {

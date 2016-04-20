@@ -44,7 +44,10 @@ func main() {
 	err = metrics.StartInfluxExport(*influxAddr, "fetcher", exp)
 	fatalIfErr(err)
 
-	f := &Fetcher{exp: exp, q: q, u: camli.NewUploader()}
+	u, err := camli.NewUploader()
+	fatalIfErr(err)
+
+	f := &Fetcher{exp: exp, q: q, u: u}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)

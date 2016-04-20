@@ -74,8 +74,11 @@ func main() {
 	err = metrics.StartInfluxExport(*influxAddr, "drinker", exp)
 	fatalIfErr(err)
 
+	u, err := camli.NewUploader()
+	fatalIfErr(err)
+
 	d := &Drinker{
-		q: q, st: st, u: camli.NewUploader(),
+		q: q, st: st, u: u,
 		exp: exp, expEvents: expEvents, expLatest: expLatest,
 	}
 
