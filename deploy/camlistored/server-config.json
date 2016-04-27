@@ -5,6 +5,10 @@
     "identitySecretRing": "/data/secring/identity-secring.gpg",
     "googlecloudstorage": ":code-archive-camlistore/blobs",
     "packRelated": true,
-    "levelDB": "/index.leveldb",
-    "dbNames": null
+    "mysql": "root@localhost:3306:toro",
+    "dbNames": {
+        "queue-sync-to-index": "sync_index_queue",
+        "ui_thumbcache": "ui_thumbmeta_cache",
+        "blobpacked_index": "blobpacked_index"
+    }
 }
