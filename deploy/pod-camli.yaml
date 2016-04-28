@@ -14,9 +14,15 @@ spec:
     - name: camli-secring
       mountPath: /data/secring
       readOnly: true
+    env:
+    - name: CAMLI_CONFENV_GCS
+      valueFrom:
+        secretKeyRef:
+          name: camli-gcs
+          key: token
     resources:
       requests:
-        cpu: "400m"
+        cpu: "300m"
   - name: mysql
     image: mysql
     ports:
@@ -36,3 +42,5 @@ spec:
   - name: camli-secring
     secret:
       secretName: camli-secring
+  - name: camlistore-mysql-persistent-storage
+    emptyDir: {}

@@ -3,7 +3,7 @@
     "listen": "0.0.0.0:3179",
     "identity": "9F74FE4B",
     "identitySecretRing": "/data/secring/identity-secring.gpg",
-    "googlecloudstorage": ":code-archive-camlistore/blobs",
+    "googlecloudstorage": ["_env", "${CAMLI_CONFENV_GCS}"],
     "packRelated": true,
     "mysql": "root@localhost:3306:toro",
     "dbNames": {
