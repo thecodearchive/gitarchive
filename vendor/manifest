@@ -1,0 +1,88 @@
+{
+	"version": 0,
+	"dependencies": [
+		{
+			"importpath": "camlistore.org",
+			"repository": "https://github.com/thecodearchive/camlistore.git",
+			"vcs": "git",
+			"revision": "6d21608af6a33fe819bcb02ae4afc69bfe23da07",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/djherbis/buffer",
+			"repository": "https://github.com/djherbis/buffer",
+			"vcs": "git",
+			"revision": "20781a7a890a71d6061b5b45b6bcf5311bbd9118",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/djherbis/nio",
+			"repository": "https://github.com/djherbis/nio",
+			"vcs": "git",
+			"revision": "10a4f7449e60dc995db3f6f781666894851762bd",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/go-sql-driver/mysql",
+			"repository": "https://github.com/go-sql-driver/mysql",
+			"vcs": "git",
+			"revision": "7ebe0a500653eeb1859664bed5e48dec1e164e73",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/google/go-github/github",
+			"repository": "https://github.com/google/go-github",
+			"vcs": "git",
+			"revision": "81ea1e5cb324404cd87c66d2a1050c7c31a2121b",
+			"branch": "master",
+			"path": "/github",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/google/go-querystring/query",
+			"repository": "https://github.com/google/go-querystring",
+			"vcs": "git",
+			"revision": "9235644dd9e52eeae6fa48efd539fdc351a0af53",
+			"branch": "master",
+			"path": "/query",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/influxdata/influxdb",
+			"repository": "https://github.com/influxdata/influxdb",
+			"vcs": "git",
+			"revision": "4c02b2da6ff3ea0ef95b16a843cd501bc44fa952",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/mattn/go-sqlite3",
+			"repository": "https://github.com/mattn/go-sqlite3",
+			"vcs": "git",
+			"revision": "467f50b0c026317ad28fc2c0a08aab6f755cfc7a",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/net/context",
+			"repository": "https://go.googlesource.com/net",
+			"vcs": "git",
+			"revision": "1aafd77e1e7f6849ad16a7bdeb65e3589a10b2bb",
+			"branch": "master",
+			"path": "/context",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/oauth2",
+			"repository": "https://go.googlesource.com/oauth2",
+			"vcs": "git",
+			"revision": "9ef2eddcc6774e42f998940fe1167216d36a7424",
+			"branch": "master",
+			"notests": true
+		}
+	]
+}

@@ -28,4 +28,6 @@ GITHUB_TOKEN
 cache.json*
 github.txt*
 queue.db*
-/bin
+
+/.GOPATH/pkg
+/.GOPATH/bin
