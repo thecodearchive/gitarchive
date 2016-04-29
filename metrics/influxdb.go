@@ -1,9 +1,9 @@
 package metrics
 
 import (
-	"encoding/json"
 	"expvar"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/influxdata/influxdb/client/v2"
@@ -25,17 +25,25 @@ func StartInfluxExport(addr, table string, v *expvar.Map) error {
 	go func(c client.Client) {
 		for range time.Tick(5 * time.Second) {
 			var fields map[string]interface{}
-			if err := json.Unmarshal([]byte(v.String()), &fields); err != nil {
-				log.Println("[-] InfluxDB json error: ", err.Error())
-			}
-			for name, val := range fields {
-				if val, ok := val.(map[string]interface{}); ok {
-					for innerName, innerVal := range val {
-						fields[name+"."+innerName] = innerVal
-					}
-					delete(fields, name)
+			var do func(string, expvar.KeyValue)
+			do = func(prefix string, kv expvar.KeyValue) {
+				switch v := kv.Value.(type) {
+				case *expvar.Int:
+					x, _ := strconv.ParseInt(v.String(), 10, 0)
+					fields[prefix+kv.Key] = x
+				case *expvar.Float:
+					x, _ := strconv.ParseFloat(v.String(), 64)
+					fields[prefix+kv.Key] = x
+				case *expvar.String:
+					x, _ := strconv.Unquote(v.String())
+					fields[prefix+kv.Key] = x
+				case *expvar.Map:
+					v.Do(func(x expvar.KeyValue) { do(kv.Key+".", x) })
+				default:
+					fields[prefix+kv.Key] = v.String()
 				}
 			}
+			v.Do(func(kv expvar.KeyValue) { do("", kv) })
 
 			if len(fields) == 0 {
 				continue
