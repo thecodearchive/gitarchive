@@ -1,12 +1,8 @@
-FROM alpine
+FROM golang:1.6-alpine
 
-ENV PATH /go/bin:/usr/local/go/bin:$PATH
-ENV GOPATH /go
+RUN	apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
 
-RUN	apk update && apk add ca-certificates \
-	&& rm -rf /var/cache/apk/*
-
-RUN buildDeps='go git gcc libc-dev libgcc' \
+RUN buildDeps='git gcc libc-dev libgcc' \
 	set -x && apk update && apk add $buildDeps \
 	&& mkdir -p /go/src/ && cd /go/src/ \
 	&& git clone --depth 1 https://github.com/thecodearchive/camlistore camlistore.org \

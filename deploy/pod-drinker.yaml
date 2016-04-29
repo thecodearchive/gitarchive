@@ -7,7 +7,7 @@ metadata:
 spec:
   containers:
   - name: drinker
-    image: gcr.io/code-archive/drinker
+    image: gcr.io/code-archive/drinker:v6
     volumeMounts:
     - name: camli-secring
       mountPath: /data/secring
@@ -15,6 +15,16 @@ spec:
     - name: drinker-cache
       mountPath: /cache
     env:
+    - name: RESUME_PATH
+      value: "/cache/resume"
+    - name: INFLUX_ADDR
+      value: "http://influx:8086"
+    - name: QUEUE_ADDR
+      value: "root:toor@tcp(queue:3306)/gitarchive"
+    - name: CACHE_PATH
+      value: "/cache/cache.json"
+    - name: CAMLI_SERVER
+      value: "http://camli:3179"
     - name: GITHUB_TOKEN
       valueFrom:
         secretKeyRef:
@@ -28,4 +38,6 @@ spec:
     secret:
       secretName: camli-secring
   - name: drinker-cache
-    emptyDir: {}
+    gcePersistentDisk:
+      pdName: drinker-cache
+      fsType: ext4
