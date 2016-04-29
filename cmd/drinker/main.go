@@ -59,7 +59,7 @@ func main() {
 		fatalIfErr(q.Close())
 	}()
 
-	st := github.NewStarTracker(1000000000, MustGetenv("GITHUB_TOKEN"))
+	st := github.NewStarTracker(10000000, MustGetenv("GITHUB_TOKEN"))
 	exp.Set("github", st.Expvar())
 	if f, err := os.Open(MustGetenv("CACHE_PATH")); err != nil {
 		log.Println("[ ] Can't load StarTracker cache, starting empty")
