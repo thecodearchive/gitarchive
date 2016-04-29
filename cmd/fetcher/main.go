@@ -2,7 +2,6 @@ package main
 
 import (
 	"expvar"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,31 +20,25 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	queuePath := flag.String("queue", "./queue.db", "clone queue path or DSN")
-	influxAddr := flag.String("influx", "http://localhost:8086", "InfluxDB address")
-	camli.AddFlags()
-	flag.Parse()
-
-	qDriver := "sqlite3"
-	if strings.Index(*queuePath, "@") != -1 {
-		qDriver = "mysql"
-	}
-	log.Printf("[ ] Opening queue (%s)...", qDriver)
-	q, err := queue.Open(qDriver, *queuePath)
-	fatalIfErr(err)
-
-	defer func() {
-		log.Println("[ ] Closing queue...")
-		fatalIfErr(q.Close())
-	}()
-
 	exp := expvar.NewMap("fetcher")
 
-	err = metrics.StartInfluxExport(*influxAddr, "fetcher", exp)
+	err := metrics.StartInfluxExport(MustGetenv("INFLUX_ADDR"), "fetcher", exp)
 	fatalIfErr(err)
 
 	u, err := camli.NewUploader()
 	fatalIfErr(err)
+
+	qDriver := "sqlite3"
+	if strings.Index(MustGetenv("QUEUE_ADDR"), "@") != -1 {
+		qDriver = "mysql"
+	}
+	log.Printf("[ ] Opening queue (%s)...", qDriver)
+	q, err := queue.Open(qDriver, MustGetenv("QUEUE_ADDR"))
+	fatalIfErr(err)
+	defer func() {
+		log.Println("[ ] Closing queue...")
+		fatalIfErr(q.Close())
+	}()
 
 	f := &Fetcher{exp: exp, q: q, u: u}
 
@@ -66,4 +59,12 @@ func fatalIfErr(err error) {
 	if err != nil {
 		log.Panic(err) // panic to let the defer run
 	}
+}
+
+func MustGetenv(name string) string {
+	val := os.Getenv(name)
+	if val == "" {
+		log.Panicln("Missing environment variable:", name)
+	}
+	return val
 }

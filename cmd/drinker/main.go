@@ -2,7 +2,6 @@ package main
 
 import (
 	"expvar"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -24,18 +23,8 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	queuePath := flag.String("queue", "./queue.db", "clone queue path or DSN")
-	cachePath := flag.String("cache", "./cache.json", "startracker cache path")
-	resumePath := flag.String("resume", "./resume.txt", "resume hour file")
-	influxAddr := flag.String("influx", "http://localhost:8086", "InfluxDB address")
-	camli.AddFlags()
-	flag.Parse()
-	if flag.NArg() > 0 {
-		log.Fatal("drinker takes no arguments")
-	}
-
 	var t time.Time
-	resume, err := ioutil.ReadFile(*resumePath)
+	resume, err := ioutil.ReadFile(MustGetenv("RESUME_PATH"))
 	if os.IsNotExist(err) {
 		t = time.Now().Truncate(time.Hour).Add(-12 * time.Hour)
 		log.Println("[ ] Can't load resume file, starting 12 hours ago")
@@ -46,50 +35,46 @@ func main() {
 		log.Printf("[+] Resuming from %s", t.Format(github.HourFormat))
 	}
 
-	if os.Getenv("GITHUB_TOKEN") == "" {
-		log.Fatal("Please set the env var GITHUB_TOKEN")
-	}
-	st := github.NewStarTracker(1000000000, os.Getenv("GITHUB_TOKEN"))
+	exp := expvar.NewMap("drinker")
+	expEvents := new(expvar.Map).Init()
+	expLatest := new(expvar.String)
+	exp.Set("latestevent", expLatest)
+	exp.Set("events", expEvents)
 
-	if f, err := os.Open(*cachePath); err != nil {
+	err = metrics.StartInfluxExport(MustGetenv("INFLUX_ADDR"), "drinker", exp)
+	fatalIfErr(err)
+
+	u, err := camli.NewUploader()
+	fatalIfErr(err)
+
+	qDriver := "sqlite3"
+	if strings.Index(MustGetenv("QUEUE_ADDR"), "@") != -1 {
+		qDriver = "mysql"
+	}
+	log.Printf("[ ] Opening queue (%s)...", qDriver)
+	q, err := queue.Open(qDriver, MustGetenv("QUEUE_ADDR"))
+	fatalIfErr(err)
+	defer func() {
+		log.Println("[ ] Closing queue...")
+		fatalIfErr(q.Close())
+	}()
+
+	st := github.NewStarTracker(1000000000, MustGetenv("GITHUB_TOKEN"))
+	exp.Set("github", st.Expvar())
+	if f, err := os.Open(MustGetenv("CACHE_PATH")); err != nil {
 		log.Println("[ ] Can't load StarTracker cache, starting empty")
 	} else {
 		log.Println("[+] Loaded StarTracker cache")
 		st.LoadCache(f)
 		f.Close()
 	}
-
-	qDriver := "sqlite3"
-	if strings.Index(*queuePath, "@") != -1 {
-		qDriver = "mysql"
-	}
-	log.Printf("[ ] Opening queue (%s)...", qDriver)
-	q, err := queue.Open(qDriver, *queuePath)
-	fatalIfErr(err)
-
 	defer func() {
-		log.Println("[ ] Closing queue...")
-		fatalIfErr(q.Close())
-
-		f, err := os.Create(*cachePath)
+		f, err := os.Create(MustGetenv("CACHE_PATH"))
 		fatalIfErr(err)
 		log.Println("[ ] Writing StarTracker cache...")
 		st.SaveCache(f)
 		fatalIfErr(f.Close())
 	}()
-
-	exp := expvar.NewMap("drinker")
-	expEvents := new(expvar.Map).Init()
-	expLatest := new(expvar.String)
-	exp.Set("latestevent", expLatest)
-	exp.Set("events", expEvents)
-	exp.Set("github", st.Expvar())
-
-	err = metrics.StartInfluxExport(*influxAddr, "drinker", exp)
-	fatalIfErr(err)
-
-	u, err := camli.NewUploader()
-	fatalIfErr(err)
 
 	d := &Drinker{
 		q: q, st: st, u: u,
@@ -132,7 +117,8 @@ func main() {
 
 		exp.Add("archivesfinished", 1)
 		t = t.Add(time.Hour)
-		fatalIfErr(ioutil.WriteFile(*resumePath, []byte(t.Format(github.HourFormat)), 0664))
+		fatalIfErr(ioutil.WriteFile(MustGetenv("RESUME_PATH"),
+			[]byte(t.Format(github.HourFormat)), 0664))
 		startTime = t.Add(time.Hour).Add(2 * time.Minute)
 	}
 
@@ -144,4 +130,12 @@ func fatalIfErr(err error) {
 	if err != nil {
 		log.Panic(err) // panic to let the defer run
 	}
+}
+
+func MustGetenv(name string) string {
+	val := os.Getenv(name)
+	if val == "" {
+		log.Panicln("Missing environment variable:", name)
+	}
+	return val
 }
