@@ -15,7 +15,7 @@ func StartInfluxExport(addr, table string, v *expvar.Map) error {
 		return err
 	}
 
-	q := client.NewQuery("CREATE DATABASE IF NOT EXISTS gitarchive", "", "")
+	q := client.NewQuery("CREATE DATABASE IF NOT EXISTS gitarchive42", "", "")
 	if response, err := c.Query(q); err != nil {
 		return err
 	} else if response.Error() != nil {
@@ -50,7 +50,7 @@ func StartInfluxExport(addr, table string, v *expvar.Map) error {
 			}
 
 			bp, _ := client.NewBatchPoints(client.BatchPointsConfig{
-				Database:  "gitarchive",
+				Database:  "gitarchive42",
 				Precision: "s",
 			})
 			pt, err := client.NewPoint(table, nil, fields, time.Now())
