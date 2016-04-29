@@ -24,7 +24,7 @@ func StartInfluxExport(addr, table string, v *expvar.Map) error {
 
 	go func(c client.Client) {
 		for range time.Tick(5 * time.Second) {
-			var fields map[string]interface{}
+			fields := make(map[string]interface{})
 			var do func(string, expvar.KeyValue)
 			do = func(prefix string, kv expvar.KeyValue) {
 				switch v := kv.Value.(type) {
