@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/thecodearchive/gitarchive/camli"
@@ -141,7 +142,7 @@ func (d *Drinker) Stop() {
 
 func interruptableSleep(d time.Duration) bool {
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(c)
 	t := time.NewTimer(d)
 	select {
