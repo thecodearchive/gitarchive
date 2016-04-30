@@ -8,11 +8,12 @@ spec:
   containers:
   - name: mysql
     image: mysql
+    args: ["--datadir=/data/mysql"]
     ports:
     - containerPort: 3306
     volumeMounts:
     - name: queue-storage
-      mountPath: /var/lib/mysql
+      mountPath: /data
     env:
     - name: MYSQL_DATABASE
       value: gitarchive

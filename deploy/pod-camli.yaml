@@ -25,11 +25,12 @@ spec:
         cpu: "300m"
   - name: mysql
     image: mysql
+    args: ["--datadir=/data/mysql"]
     ports:
     - containerPort: 3306
     volumeMounts:
-    - name: camlistore-mysql-persistent-storage
-      mountPath: /var/lib/mysql
+    - name: camli-index
+      mountPath: /data
     env:
     - name: MYSQL_ROOT_PASSWORD
       value: toro
@@ -42,5 +43,7 @@ spec:
   - name: camli-secring
     secret:
       secretName: camli-secring
-  - name: camlistore-mysql-persistent-storage
-    emptyDir: {}
+  - name: camli-index
+    gcePersistentDisk:
+      pdName: camli-index
+      fsType: ext4
