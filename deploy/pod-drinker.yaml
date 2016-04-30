@@ -32,7 +32,7 @@ spec:
           key: token
     resources:
       requests:
-        cpu: "300m"
+        cpu: "100m"
   volumes:
   - name: camli-secring
     secret:

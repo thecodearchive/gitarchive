@@ -11,7 +11,7 @@ spec:
     ports:
     - containerPort: 3306
     volumeMounts:
-    - name: mysql-persistent-storage
+    - name: queue-storage
       mountPath: /var/lib/mysql
     env:
     - name: MYSQL_DATABASE
@@ -24,5 +24,7 @@ spec:
       limits:
         cpu: "200m"
   volumes:
-  - name: mysql-persistent-storage
-    emptyDir: {}
+  - name: queue-storage
+    gcePersistentDisk:
+      pdName: queue-storage
+      fsType: ext4
