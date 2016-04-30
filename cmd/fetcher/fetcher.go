@@ -12,11 +12,13 @@ import (
 	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/git"
 	"github.com/thecodearchive/gitarchive/queue"
+	"github.com/thecodearchive/gitarchive/weekmap"
 )
 
 type Fetcher struct {
-	q *queue.Queue
-	u *camli.Uploader
+	q        *queue.Queue
+	u        *camli.Uploader
+	schedule *weekmap.WeekMap
 
 	exp *expvar.Map
 
@@ -25,13 +27,19 @@ type Fetcher struct {
 
 func (f *Fetcher) Run() error {
 	for atomic.LoadUint32(&f.closing) == 0 {
+		if !f.schedule.Get(time.Now()) {
+			f.exp.Add("sleep", 1)
+			interruptableSleep(5 * time.Minute)
+			continue
+		}
+
 		name, parent, err := f.q.Pop()
 		if err != nil {
 			return err
 		}
 
 		if name == "" {
-			f.exp.Add("sleeps", 1)
+			f.exp.Add("emptyqueue", 1)
 			interruptableSleep(30 * time.Second)
 			continue
 		}
@@ -101,14 +109,16 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	if res.PackRef != "" {
 		packfiles = append(packfiles, res.PackRef)
 	} else {
-		f.exp.Add("empty", 1)
+		f.exp.Add("emptypack", 1)
 	}
-	return f.u.PutRepo(&camli.Repo{
+	err = f.u.PutRepo(&camli.Repo{
 		Name:      url,
 		Retrieved: time.Now(),
 		Refs:      res.Refs,
 		Packfiles: packfiles,
 	})
+	log.Printf("[+] Got %d refs, %d bytes.", len(res.Refs), res.BytesFetched)
+	return err
 }
 
 func (f *Fetcher) Stop() {

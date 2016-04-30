@@ -13,6 +13,7 @@ import (
 	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/metrics"
 	"github.com/thecodearchive/gitarchive/queue"
+	"github.com/thecodearchive/gitarchive/weekmap"
 )
 
 func main() {
@@ -20,9 +21,12 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
+	schedule, err := weekmap.Parse(MustGetenv("SCHEDULE"))
+	fatalIfErr(err)
+
 	exp := expvar.NewMap("fetcher")
 
-	err := metrics.StartInfluxExport(MustGetenv("INFLUX_ADDR"), "fetcher", exp)
+	err = metrics.StartInfluxExport(MustGetenv("INFLUX_ADDR"), "fetcher", exp)
 	fatalIfErr(err)
 
 	u, err := camli.NewUploader()
@@ -40,7 +44,7 @@ func main() {
 		fatalIfErr(q.Close())
 	}()
 
-	f := &Fetcher{exp: exp, q: q, u: u}
+	f := &Fetcher{exp: exp, q: q, u: u, schedule: schedule}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
