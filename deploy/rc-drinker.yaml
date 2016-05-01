@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: drinker
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: drinker
+      labels:
+        name: drinker
+    spec:
+      containers:
+      - name: drinker
+        image: gcr.io/code-archive/drinker:v9
+        volumeMounts:
+        - name: camli-secring
+          mountPath: /data/secring
+          readOnly: true
+        - name: drinker-cache
+          mountPath: /cache
+        env:
+        - name: RESUME_PATH
+          value: "/cache/resume"
+        - name: INFLUX_ADDR
+          value: "http://influx:8086"
+        - name: QUEUE_ADDR
+          value: "root:toor@tcp(queue:3306)/gitarchive"
+        - name: CACHE_PATH
+          value: "/cache/cache.json"
+        - name: CAMLI_SERVER
+          value: "http://camli:3179"
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: github-token
+              key: token
+        resources:
+          requests:
+            cpu: "100m"
+      volumes:
+      - name: camli-secring
+        secret:
+          secretName: camli-secring
+      - name: drinker-cache
+        gcePersistentDisk:
+          pdName: drinker-cache
+          fsType: ext4
