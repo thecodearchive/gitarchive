@@ -21,6 +21,8 @@ type Uploader struct {
 
 // NewUploader returns a git blob uploader.
 func NewUploader() (*Uploader, error) {
+	// panic: proper use of ExplicitSecretRingFile requires exposing flagSecretRing with AddSecretRingFlag
+	client.AddFlags()
 	c := client.New(os.Getenv("CAMLI_SERVER"),
 		client.OptionTransportConfig(&client.TransportConfig{}))
 	stats := c.HTTPStats()
