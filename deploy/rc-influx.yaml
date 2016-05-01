@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: influx
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: influx
+      labels:
+        name: influx
+    spec:
+      containers:
+      - name: influx
+        image: tutum/influxdb
+        ports:
+        - containerPort: 8086
+        - containerPort: 8083
+        volumeMounts:
+        - name: influx-persistent-storage
+          mountPath: /data
+        resources:
+          requests:
+            cpu: "100m"
+          limits:
+            cpu: "200m"
+      volumes:
+        - name: influx-persistent-storage
+          gcePersistentDisk:
+            pdName: influx-storage
+            fsType: ext4
