@@ -22,6 +22,7 @@ type Queue struct {
 	insertQ *sql.Stmt
 	selectQ *sql.Stmt
 	deleteQ *sql.Stmt
+	countQ  *sql.Stmt
 }
 
 func Open(driverName, dataSourceName string) (*Queue, error) {
@@ -60,6 +61,11 @@ func Open(driverName, dataSourceName string) (*Queue, error) {
 		return nil, fmt.Errorf("delete preparation failed: %s", err)
 	}
 
+	query = `SELECT COUNT(*) FROM Queue`
+	if q.countQ, err = db.Prepare(query); err != nil {
+		return nil, fmt.Errorf("select preparation failed: %s", err)
+	}
+
 	return q, nil
 }
 
@@ -91,6 +97,12 @@ func (q *Queue) Pop() (name, parent string, err error) {
 	}
 
 	return
+}
+
+func (q *Queue) Len() (int, error) {
+	var res int
+	err := q.countQ.QueryRow().Scan(&res)
+	return res, err
 }
 
 func (q *Queue) Close() error {

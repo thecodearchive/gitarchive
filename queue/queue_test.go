@@ -51,6 +51,11 @@ func testQueue(t *testing.T, q *Queue) {
 	fatalIfErr(t, err)
 	checkNAndP(t, "a", "", n, p)
 	fatalIfErr(t, q.Add("c", "c"))
+	len, err := q.Len()
+	fatalIfErr(t, err)
+	if len != 2 {
+		t.Errorf("wrong length %d, expected 2", len)
+	}
 	n, p, err = q.Pop()
 	fatalIfErr(t, err)
 	checkNAndP(t, "b", "b", n, p)

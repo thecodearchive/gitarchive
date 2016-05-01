@@ -37,6 +37,8 @@ func StartInfluxExport(addr, table string, v *expvar.Map) error {
 				case *expvar.String:
 					x, _ := strconv.Unquote(v.String())
 					fields[prefix+kv.Key] = x
+				case IntFunc:
+					fields[prefix+kv.Key] = v.Int()
 				case *expvar.Map:
 					v.Do(func(x expvar.KeyValue) { do(kv.Key+".", x) })
 				default:

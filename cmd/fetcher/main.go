@@ -44,6 +44,10 @@ func main() {
 		log.Println("[ ] Closing queue...")
 		fatalIfErr(q.Close())
 	}()
+	exp.Set("queuelen", metrics.IntFunc(func() int {
+		res, _ := q.Len()
+		return res
+	}))
 
 	f := &Fetcher{exp: exp, q: q, u: u, schedule: schedule}
 
