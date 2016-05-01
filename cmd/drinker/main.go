@@ -70,11 +70,14 @@ func main() {
 		log.Println("[+] Loaded StarTracker cache")
 	}
 	defer func() {
-		f, err := os.Create(MustGetenv("CACHE_PATH"))
+		f, err := os.Create(MustGetenv("CACHE_PATH") + ".tmp")
 		fatalIfErr(err)
 		log.Println("[ ] Writing StarTracker cache...")
-		st.SaveCache(f)
+		fatalIfErr(st.SaveCache(f))
 		fatalIfErr(f.Close())
+		fatalIfErr(os.Rename(MustGetenv("CACHE_PATH")+".tmp", MustGetenv("CACHE_PATH")))
+		fatalIfErr(ioutil.WriteFile(MustGetenv("RESUME_PATH"),
+			[]byte(t.Format(github.HourFormat)), 0664))
 	}()
 
 	d := &Drinker{
@@ -118,8 +121,6 @@ func main() {
 
 		exp.Add("archivesfinished", 1)
 		t = t.Add(time.Hour)
-		fatalIfErr(ioutil.WriteFile(MustGetenv("RESUME_PATH"),
-			[]byte(t.Format(github.HourFormat)), 0664))
 		startTime = t.Add(time.Hour).Add(2 * time.Minute)
 	}
 
