@@ -65,9 +65,9 @@ func main() {
 	if f, err := os.Open(MustGetenv("CACHE_PATH")); err != nil {
 		log.Println("[ ] Can't load StarTracker cache, starting empty")
 	} else {
-		log.Println("[+] Loaded StarTracker cache")
-		st.LoadCache(f)
+		fatalIfErr(st.LoadCache(f))
 		f.Close()
+		log.Println("[+] Loaded StarTracker cache")
 	}
 	defer func() {
 		f, err := os.Create(MustGetenv("CACHE_PATH"))
