@@ -58,18 +58,23 @@ func New(maxEntries int) *Cache {
 
 func Load(r io.Reader, load func(json.RawMessage) (interface{}, error),
 	maxEntries int) (*Cache, error) {
-	var list []struct {
-		Key   string
-		Value json.RawMessage
-	}
-	if err := json.NewDecoder(r).Decode(&list); err != nil {
-		return nil, err
-	}
-	if maxEntries != 0 && len(list) > maxEntries {
-		return nil, errors.New("trying to load more than maxEntries")
-	}
 	c := New(maxEntries)
-	for _, e := range list {
+	dec := json.NewDecoder(r)
+	loadedEntries := 0
+	for {
+		var e struct {
+			Key   string
+			Value json.RawMessage
+		}
+		if err := dec.Decode(&e); err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		loadedEntries += 1
+		if maxEntries != 0 && loadedEntries > maxEntries {
+			return nil, errors.New("trying to load more than maxEntries")
+		}
 		value, err := load(e.Value)
 		if err != nil {
 			return nil, err
@@ -77,7 +82,7 @@ func Load(r io.Reader, load func(json.RawMessage) (interface{}, error),
 		ele := c.ll.PushBack(&entry{e.Key, value})
 		c.cache[e.Key] = ele
 	}
-	atomic.StoreUint32(&c.length, uint32(len(list)))
+	atomic.StoreUint32(&c.length, uint32(loadedEntries))
 	return c, nil
 }
 
@@ -157,9 +162,11 @@ func (c *Cache) Save(w io.Writer) error {
 	if c.cache == nil {
 		return nil
 	}
-	var list []*entry
+	enc := json.NewEncoder(w)
 	for e := c.ll.Front(); e != nil; e = e.Next() {
-		list = append(list, e.Value.(*entry))
+		if err := enc.Encode(e.Value.(*entry)); err != nil {
+			return err
+		}
 	}
-	return json.NewEncoder(w).Encode(list)
+	return nil
 }

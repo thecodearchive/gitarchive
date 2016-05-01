@@ -78,6 +78,7 @@ func main() {
 		fatalIfErr(os.Rename(MustGetenv("CACHE_PATH")+".tmp", MustGetenv("CACHE_PATH")))
 		fatalIfErr(ioutil.WriteFile(MustGetenv("RESUME_PATH"),
 			[]byte(t.Format(github.HourFormat)), 0664))
+		log.Println("[+] Saved cache and resume point successfully.")
 	}()
 
 	d := &Drinker{
