@@ -3,6 +3,7 @@ package metrics
 import (
 	"expvar"
 	"log"
+	"os"
 	"strconv"
 	"time"
 
@@ -55,7 +56,8 @@ func StartInfluxExport(addr, table string, v *expvar.Map) error {
 				Database:  "gitarchive42",
 				Precision: "s",
 			})
-			pt, err := client.NewPoint(table, nil, fields, time.Now())
+			tags := map[string]string{"hostname": os.Getenv("HOSTNAME")}
+			pt, err := client.NewPoint(table, tags, fields, time.Now())
 			if err != nil {
 				log.Println("[-] InfluxDB error: ", err.Error())
 			}

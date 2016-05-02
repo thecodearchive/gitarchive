@@ -3,7 +3,7 @@ kind: ReplicationController
 metadata:
   name: fetcher
 spec:
-  replicas: 1
+  replicas: 3
   template:
     metadata:
       name: fetcher
@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: fetcher
-        image: gcr.io/code-archive/fetcher:v6
+        image: gcr.io/code-archive/fetcher:v7
         volumeMounts:
         - name: camli-secring
           mountPath: /data/secring
@@ -29,7 +29,9 @@ spec:
           value: "http://camli:3179"
         resources:
           requests:
-            cpu: "300m"
+            cpu: "150m"
+          limits:
+            memory: "4Gi"
       volumes:
       - name: camli-secring
         secret:
