@@ -2,10 +2,14 @@ apiVersion: v1
 kind: Service
 metadata:
   name: influx
+  namespace: kube-system
   labels:
     name: influx
 spec:
   ports:
-  - port: 8086
+  - name: api
+    port: 8086
+  - name: http
+    port: 8083
   selector:
-    name: influx
+    name: influxGrafana

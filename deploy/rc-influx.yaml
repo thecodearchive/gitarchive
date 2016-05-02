@@ -1,14 +1,15 @@
 apiVersion: v1
 kind: ReplicationController
 metadata:
-  name: influx
+  name: influx-grafana
+  namespace: kube-system
 spec:
   replicas: 1
   template:
     metadata:
-      name: influx
+      name: influxGrafana
       labels:
-        name: influx
+        name: influxGrafana
     spec:
       containers:
       - name: influx
@@ -17,15 +18,35 @@ spec:
         - containerPort: 8086
         - containerPort: 8083
         volumeMounts:
-        - name: influx-persistent-storage
+        - name: influx-storage
           mountPath: /data
         resources:
           requests:
             cpu: "100m"
           limits:
             cpu: "200m"
+      - name: grafana
+        image: kubernetes/heapster_grafana:v2.1.0
+        env:
+          - name: INFLUXDB_SERVICE_URL
+            value: http://influx:8086
+          - name: GF_AUTH_BASIC_ENABLED
+            value: "false"
+          - name: GF_AUTH_ANONYMOUS_ENABLED
+            value: "true"
+          - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+            value: Admin
+          - name: GF_SERVER_ROOT_URL
+            value: /api/v1/proxy/namespaces/kube-system/services/grafana/
+        volumeMounts:
+        - mountPath: /var
+          name: grafana-storage
       volumes:
-        - name: influx-persistent-storage
+        - name: grafana-storage
+          gcePersistentDisk:
+            pdName: grafana-storage
+            fsType: ext4
+        - name: influx-storage
           gcePersistentDisk:
             pdName: influx-storage
             fsType: ext4
