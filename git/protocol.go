@@ -2,6 +2,7 @@ package git
 
 import (
 	"errors"
+	"expvar"
 	"fmt"
 	"io"
 	"strconv"
@@ -78,9 +79,10 @@ func ParseSmartResponse(body io.Reader) (refs map[string]string, err error) {
 	}
 }
 
-func ParseUploadPackResponse(body io.Reader, uploader *camli.Uploader, msgW io.Writer) (string, int64, error) {
+func ParseUploadPackResponse(body io.Reader, uploader *camli.Uploader,
+	msgW io.Writer, counter *expvar.Int) (string, int64, error) {
 	r := &sideBandReader{Upstream: body, MsgW: msgW}
-	cr := &countingReader{Upstream: r}
+	cr := &countingReader{Upstream: r, Counter: counter}
 	ref, err := uploader.PutObject(cr)
 	if r.Errors != nil {
 		err = fmt.Errorf("remote error: %s", r.Errors)
@@ -146,10 +148,14 @@ func (s *sideBandReader) Read(p []byte) (n int, err error) {
 type countingReader struct {
 	Upstream  io.Reader
 	BytesRead int64
+	Counter   *expvar.Int
 }
 
 func (r *countingReader) Read(p []byte) (n int, err error) {
 	n, err = r.Upstream.Read(p)
 	r.BytesRead += int64(n)
+	if r.Counter != nil {
+		r.Counter.Add(int64(n))
+	}
 	return
 }

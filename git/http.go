@@ -2,6 +2,7 @@ package git
 
 import (
 	"bytes"
+	"expvar"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,7 +20,7 @@ type FetchResult struct {
 }
 
 func Fetch(gitURL string, haves map[string]struct{}, uploader *camli.Uploader,
-	msgW io.Writer) (*FetchResult, error) {
+	msgW io.Writer, bwCounter *expvar.Int) (*FetchResult, error) {
 
 	req, err := http.NewRequest("GET", gitURL+"/info/refs?service=git-upload-pack", nil)
 	if err != nil {
@@ -99,7 +100,8 @@ func Fetch(gitURL string, haves map[string]struct{}, uploader *camli.Uploader,
 		return nil, fmt.Errorf("POST /git-upload-pack: %d", resp.StatusCode)
 	}
 
-	res.PackRef, res.BytesFetched, err = ParseUploadPackResponse(resp.Body, uploader, msgW)
+	res.PackRef, res.BytesFetched, err = ParseUploadPackResponse(resp.Body,
+		uploader, msgW, bwCounter)
 	if res.BytesFetched == 32 { // empty packfile (hdr is 12, trailer is 20)
 		res.PackRef = ""
 	}

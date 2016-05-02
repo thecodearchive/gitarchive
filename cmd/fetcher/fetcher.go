@@ -27,6 +27,7 @@ type Fetcher struct {
 }
 
 func (f *Fetcher) Run() error {
+	f.exp.Set("fetchbytes", &expvar.Int{})
 	for atomic.LoadUint32(&f.closing) == 0 {
 		if !f.schedule.Get(time.Now()) {
 			f.exp.Add("sleep", 1)
@@ -100,12 +101,12 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	log.Printf("[+] %s %s%s...", logVerb, name, logFork)
 
 	start := time.Now()
-	res, err := git.Fetch(url, haves, f.u, os.Stderr)
+	bw := f.exp.Get("fetchbytes").(*expvar.Int)
+	res, err := git.Fetch(url, haves, f.u, os.Stderr, bw)
 	if err != nil {
 		return err
 	}
 	f.exp.Add("fetchtime", int64(time.Since(start)))
-	f.exp.Add("fetchbytes", res.BytesFetched)
 
 	if res.PackRef != "" {
 		packfiles = append(packfiles, res.PackRef)

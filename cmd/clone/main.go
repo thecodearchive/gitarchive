@@ -38,7 +38,7 @@ func main() {
 		packfiles = repo.Packfiles
 	}
 
-	res, err := git.Fetch(url, haves, uploader, os.Stderr)
+	res, err := git.Fetch(url, haves, uploader, os.Stderr, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
