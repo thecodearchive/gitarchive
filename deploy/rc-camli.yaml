@@ -28,6 +28,8 @@ spec:
         resources:
           requests:
             cpu: "300m"
+          limits:
+            memory: "3Gi"
       - name: mysql
         image: mysql
         args: ["--datadir=/data/mysql"]

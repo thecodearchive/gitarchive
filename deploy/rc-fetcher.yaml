@@ -3,7 +3,7 @@ kind: ReplicationController
 metadata:
   name: fetcher
 spec:
-  replicas: 3
+  replicas: 2
   template:
     metadata:
       name: fetcher
@@ -29,9 +29,9 @@ spec:
           value: "http://camli:3179"
         resources:
           requests:
-            cpu: "150m"
+            cpu: "200m"
           limits:
-            memory: "4Gi"
+            memory: "3Gi"
       volumes:
       - name: camli-secring
         secret:
