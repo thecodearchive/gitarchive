@@ -17,7 +17,7 @@ limitations under the License.
 // Package serverinit is responsible for mapping from a Camlistore
 // configuration file and instantiating HTTP Handlers for all the
 // necessary endpoints.
-package serverinit
+package serverinit // import "camlistore.org/pkg/serverinit"
 
 import (
 	"bytes"
@@ -39,10 +39,10 @@ import (
 
 	"camlistore.org/pkg/auth"
 	"camlistore.org/pkg/blobserver"
-	"camlistore.org/pkg/blobserver/blobpacked"
 	"camlistore.org/pkg/blobserver/handlers"
 	"camlistore.org/pkg/httputil"
 	"camlistore.org/pkg/index"
+	"camlistore.org/pkg/jsonsign/signhandler"
 	"camlistore.org/pkg/osutil"
 	"camlistore.org/pkg/server"
 	"camlistore.org/pkg/server/app"
@@ -237,11 +237,6 @@ func (hl *handlerLoader) configType(prefix string) string {
 	return ""
 }
 
-func (hl *handlerLoader) getOrSetup(prefix string) interface{} {
-	hl.setupHandler(prefix)
-	return hl.handler[prefix]
-}
-
 func (hl *handlerLoader) MyPrefix() string {
 	return hl.curPrefix
 }
@@ -328,13 +323,6 @@ func (hl *handlerLoader) setupHandler(prefix string) {
 				exitFailure("Error reindexing %s: %v", h.prefix, err)
 			}
 		}
-		// TODO(mpl): make an interface that is "storage that has an internal index" and switch type on it?
-		if h.htype == "storage-blobpacked" && hl.reindex {
-			log.Printf("Wiping %s, because reindexing ...", h.prefix)
-			if err := blobpacked.WipeMeta(pstorage); err != nil {
-				exitFailure("Error wiping %s's meta: %v", h.prefix, err)
-			}
-		}
 		hl.handler[h.prefix] = pstorage
 		if h.internal {
 			hl.installer.Handle(prefix, unauthorizedHandler{})
@@ -408,6 +396,10 @@ type Config struct {
 	// apps is the list of server apps configured during InstallHandlers,
 	// and that should be started after camlistored has started serving.
 	apps []*app.Handler
+	// signHandler is found and configured during InstallHandlers, or nil.
+	// It is stored in the Config, so we can call UploadPublicKey on on it as
+	// soon as camlistored is ready for it.
+	signHandler *signhandler.Handler
 }
 
 // detectConfigChange returns an informative error if conf contains obsolete keys.
@@ -595,6 +587,9 @@ func (config *Config) InstallHandlers(hi HandlerInstaller, baseURL string, reind
 		if helpHandler, ok := handler.(*server.HelpHandler); ok {
 			helpHandler.SetServerConfig(config.Obj)
 		}
+		if signHandler, ok := handler.(*signhandler.Handler); ok {
+			config.signHandler = signHandler
+		}
 		if in, ok := handler.(blobserver.HandlerIniter); ok {
 			if err := in.InitHandler(hl); err != nil {
 				return nil, fmt.Errorf("Error calling InitHandler on %s: %v", pfx, err)
@@ -608,9 +603,17 @@ func (config *Config) InstallHandlers(hi HandlerInstaller, baseURL string, reind
 	if v, _ := strconv.ParseBool(os.Getenv("CAMLI_HTTP_PPROF")); v {
 		hi.Handle("/debug/pprof/", profileHandler{})
 	}
+	hi.Handle("/debug/goroutines", auth.RequireAuth(http.HandlerFunc(dumpGoroutines), auth.OpRead))
 	hi.Handle("/debug/config", auth.RequireAuth(configHandler{config}, auth.OpAll))
 	hi.Handle("/debug/logs/", auth.RequireAuth(http.HandlerFunc(logsHandler), auth.OpAll))
 	return multiCloser(hl.closers), nil
+}
+
+func dumpGoroutines(w http.ResponseWriter, r *http.Request) {
+	buf := make([]byte, 2<<20)
+	buf = buf[:runtime.Stack(buf, true)]
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write(buf)
 }
 
 // StartApps starts all the server applications that were configured
@@ -624,6 +627,15 @@ func (config *Config) StartApps() error {
 		}
 	}
 	return nil
+}
+
+// UploadPublicKey uploads the public key blob with the sign handler that was
+// configured during InstallHandlers.
+func (config *Config) UploadPublicKey() error {
+	if config.signHandler == nil {
+		return nil
+	}
+	return config.signHandler.UploadPublicKey()
 }
 
 // AppURL returns a map of app name to app base URL for all the configured
@@ -678,16 +690,22 @@ type configHandler struct {
 
 var (
 	knownKeys     = regexp.MustCompile(`(?ms)^\s+"_knownkeys": {.+?},?\n`)
-	sensitiveLine = regexp.MustCompile(`(?m)^\s+\"(auth|aws_secret_access_key|password)\": "[^\"]+".*\n`)
+	sensitiveLine = regexp.MustCompile(`(?m)^\s+\"(auth|aws_secret_access_key|password|client_secret)\": "[^\"]+".*\n`)
+	trailingComma = regexp.MustCompile(`,(\n\s*\})`)
 )
 
-func (h configHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h configHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	b, _ := json.MarshalIndent(h.c.Obj, "", "    ")
 	b = knownKeys.ReplaceAll(b, nil)
+	b = trailingComma.ReplaceAll(b, []byte("$1"))
 	b = sensitiveLine.ReplaceAllFunc(b, func(ln []byte) []byte {
 		i := bytes.IndexByte(ln, ':')
-		return []byte(string(ln[:i+1]) + " REDACTED\n")
+		r := string(ln[:i+1]) + ` "REDACTED"`
+		if bytes.HasSuffix(bytes.TrimSpace(ln), []byte{','}) {
+			r += ","
+		}
+		return []byte(r + "\n")
 	})
 	w.Write(b)
 }

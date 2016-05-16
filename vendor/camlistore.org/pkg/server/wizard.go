@@ -34,7 +34,7 @@ import (
 	"camlistore.org/pkg/osutil"
 	"go4.org/jsonconfig"
 
-	"camlistore.org/third_party/code.google.com/p/xsrftoken"
+	"code.google.com/p/xsrftoken"
 )
 
 var ignoredFields = map[string]bool{
@@ -264,7 +264,7 @@ func (sh *SetupHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				"</body></html>\n")
 		return
 	}
-	http.Redirect(rw, req, "http://camlistore.org/docs/server-config", http.StatusMovedPermanently)
+	http.Redirect(rw, req, "https://camlistore.org/doc/server-config", http.StatusMovedPermanently)
 	return
 
 	// TODO: this file and the code in wizard-html.go is outdated. Anyone interested enough

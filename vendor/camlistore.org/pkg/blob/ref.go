@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package blob defines types to refer to and retrieve low-level Camlistore blobs.
-package blob
+package blob // import "camlistore.org/pkg/blob"
 
 import (
 	"bytes"
@@ -24,21 +24,12 @@ import (
 	"fmt"
 	"hash"
 	"reflect"
-	"regexp"
 	"strings"
-
-	// This is a pretty low-level package, so add the Go minimum
-	// version dependency check here at least.  This avoids
-	// adding it in many other places.
-	_ "camlistore.org/depcheck"
 )
 
 // Pattern is the regular expression which matches a blobref.
 // It does not contain ^ or $.
 const Pattern = `\b([a-z][a-z0-9]*)-([a-f0-9]+)\b`
-
-// whole blobref pattern
-var blobRefPattern = regexp.MustCompile("^" + Pattern + "$")
 
 // Ref is a reference to a Camlistore blob.
 // It is used as a value type and supports equality (with ==) and the ability

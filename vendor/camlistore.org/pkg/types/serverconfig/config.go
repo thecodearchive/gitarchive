@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package serverconfig provides types related to the server configuration file.
-package serverconfig
+package serverconfig // import "camlistore.org/pkg/types/serverconfig"
 
 import (
 	"encoding/json"
@@ -36,7 +36,7 @@ type Config struct {
 	// alternative source tree, to override the embedded ui and/or closure resources.
 	// If non empty, the ui files will be expected at
 	// sourceRoot + "/server/camlistored/ui" and the closure library at
-	// sourceRoot + "/third_party/closure/lib"
+	// sourceRoot + "/vendor/embed/closure/lib"
 	// Also used by the publish handler.
 	SourceRoot string `json:"sourceRoot,omitempty"`
 	OwnerName  string `json:"ownerName,omitempty"`
@@ -73,7 +73,7 @@ type Config struct {
 	//    "index"               (overrides 'dbname' key above)
 	//    "queue-sync-to-index" (the sync queue to index things)
 	//    "queue-sync-to-s3"    (the sync queue to replicate to s3)
-	//    "blobpacked_index"    (the index for blobpacked, the 'packRelated' option)
+	//    "blobpacked_index"    (the index for blobpacked, the 'packRelated' option. Defaults to "blobpacked_index".)
 	//    "ui_thumbcache"
 	DBNames map[string]string `json:"dbNames"`
 

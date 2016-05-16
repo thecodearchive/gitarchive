@@ -18,7 +18,7 @@ limitations under the License.
 //
 // A schema blob is a JSON-encoded blob that describes other blobs.
 // See documentation in Camlistore's doc/schema/ directory.
-package schema
+package schema // import "camlistore.org/pkg/schema"
 
 import (
 	"bytes"
@@ -41,7 +41,7 @@ import (
 	"unicode/utf8"
 
 	"camlistore.org/pkg/blob"
-	"camlistore.org/third_party/github.com/bradfitz/latlong"
+	"github.com/bradfitz/latlong"
 
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/rwcarlsen/goexif/tiff"
@@ -453,11 +453,11 @@ func (ss *superset) FileNameString() string {
 		v = stringFromMixedArray(ss.FileNameBytes)
 	}
 	if v != "" {
-		if strings.Index(v, "/") != -1 {
+		if strings.Contains(v, "/") {
 			// Bogus schema blob; ignore.
 			return ""
 		}
-		if strings.Index(v, "\\") != -1 {
+		if strings.Contains(v, "\\") {
 			// Bogus schema blob; ignore.
 			return ""
 		}
@@ -764,9 +764,8 @@ type claimParam struct {
 	value     string   // optional if Type == DelAttributeClaim
 
 	// Params specific to ShareClaim claims:
-	authType     string
-	transitive   bool
-	shareExpires time.Time // Zero means no expiration
+	authType   string
+	transitive bool
 
 	// Params specific to ShareClaim and DeleteClaim claims.
 	target blob.Ref

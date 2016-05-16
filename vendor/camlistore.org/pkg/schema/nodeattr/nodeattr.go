@@ -20,7 +20,7 @@ limitations under the License.
 // treats the special timezone offset -00:01 (one minute west of UTC)
 // as meaning that the local time was known, but the location or
 // timezone was not. Usually this is from EXIF files.
-package nodeattr
+package nodeattr // import "camlistore.org/pkg/schema/nodeattr"
 
 const (
 	// Type is the Camlistore permanode type ("camliNodeType").
@@ -92,6 +92,12 @@ const (
 
 	// AddressCountry is http://schema.org/addressCountry
 	AddressCountry = "addressCountry"
+
+	// GivenName is http://schema.org/givenName
+	GivenName = "givenName"
+
+	// FamilyName is http://schema.org/familyName
+	FamilyName = "familyName"
 
 	// CamliPathOrderColon is the prefix "camliPathOrder:".
 	// The attribute key should be followed by a uint64. The attribute value

@@ -19,7 +19,7 @@ limitations under the License.
 //
 // Most of the package contains internal details used by genfileembed.
 // Normal applications will simply make a global Files variable.
-package fileembed
+package fileembed // import "camlistore.org/pkg/fileembed"
 
 import (
 	"compress/zlib"
@@ -115,6 +115,13 @@ func (m multi) Open() (io.Reader, error) {
 		rs = append(rs, r)
 	}
 	return io.MultiReader(rs...), nil
+}
+
+// IsEmpty reports whether f is empty.
+func (f *Files) IsEmpty() bool {
+	f.lk.Lock()
+	defer f.lk.Unlock()
+	return len(f.file) == 0
 }
 
 // Add adds a file to the file set.

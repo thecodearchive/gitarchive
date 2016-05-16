@@ -5,7 +5,7 @@
 			"importpath": "camlistore.org",
 			"repository": "https://github.com/thecodearchive/camlistore.git",
 			"vcs": "git",
-			"revision": "6d21608af6a33fe819bcb02ae4afc69bfe23da07",
+			"revision": "b562431a5359ef14931be7e5967c1dbe457e11c3",
 			"branch": "master",
 			"notests": true
 		},

@@ -22,6 +22,7 @@ type user struct {
 	Id        string
 	FirstName string
 	LastName  string
+	Photo     photoItem
 }
 
 type userInfo struct {
@@ -44,6 +45,7 @@ type checkinItem struct {
 	TimeZoneOffset int    // offset in minutes. positive is east.
 	Shout          string // "Message from check-in, if present and visible to the acting user."
 	Venue          venueItem
+	With           []*user // list of friends checked in together
 }
 
 type venueItem struct {
@@ -84,6 +86,13 @@ func (vi *venueItem) icon() string {
 		return ""
 	}
 	return c.Icon.Prefix + "bg_88" + c.Icon.Suffix
+}
+
+func (user *user) icon() string {
+	if user.Photo.Prefix == "" || user.Photo.Suffix == "" {
+		return ""
+	}
+	return user.Photo.Prefix + "500x500" + user.Photo.Suffix
 }
 
 type venueLocationItem struct {

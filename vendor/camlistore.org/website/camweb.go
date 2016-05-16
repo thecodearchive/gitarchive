@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package main // import "camlistore.org/website"
 
 import (
 	"bytes"
@@ -30,7 +30,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/smtp"
 	"net/url"
 	"os"
@@ -46,9 +45,10 @@ import (
 	"camlistore.org/pkg/netutil"
 	"camlistore.org/pkg/osutil"
 	"camlistore.org/pkg/types/camtypes"
-	"camlistore.org/third_party/github.com/russross/blackfriday"
+	"github.com/russross/blackfriday"
 
 	"go4.org/cloud/cloudlaunch"
+	"go4.org/writerutil"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -66,17 +66,15 @@ const defaultAddr = ":31798" // default webserver address
 var h1TitlePattern = regexp.MustCompile(`<h1>([^<]+)</h1>`)
 
 var (
-	httpAddr        = flag.String("http", defaultAddr, "HTTP address")
-	httpsAddr       = flag.String("https", "", "HTTPS address")
-	root            = flag.String("root", "", "Website root (parent of 'static', 'content', and 'tmpl")
-	logDir          = flag.String("logdir", "", "Directory to write log files to (one per hour), or empty to not log.")
-	logStdout       = flag.Bool("logstdout", true, "Whether to log to stdout")
-	tlsCertFile     = flag.String("tlscert", "", "TLS cert file")
-	tlsKeyFile      = flag.String("tlskey", "", "TLS private key file")
-	buildbotBackend = flag.String("buildbot_backend", "", "[optional] Build bot status backend URL")
-	buildbotHost    = flag.String("buildbot_host", "", "[optional] Hostname to map to the buildbot_backend. If an HTTP request with this hostname is received, it proxies to buildbot_backend.")
-	alsoRun         = flag.String("also_run", "", "[optiona] Path to run as a child process. (Used to run camlistore.org's ./scripts/run-blob-server)")
-	devMode         = flag.Bool("dev", false, "in dev mode")
+	httpAddr    = flag.String("http", defaultAddr, "HTTP address")
+	httpsAddr   = flag.String("https", "", "HTTPS address")
+	root        = flag.String("root", "", "Website root (parent of 'static', 'content', and 'tmpl)")
+	logDir      = flag.String("logdir", "", "Directory to write log files to (one per hour), or empty to not log.")
+	logStdout   = flag.Bool("logstdout", true, "Whether to log to stdout")
+	tlsCertFile = flag.String("tlscert", "", "TLS cert file")
+	tlsKeyFile  = flag.String("tlskey", "", "TLS private key file")
+	alsoRun     = flag.String("also_run", "", "[optiona] Path to run as a child process. (Used to run camlistore.org's ./scripts/run-blob-server)")
+	devMode     = flag.Bool("dev", false, "in dev mode")
 
 	gceProjectID = flag.String("gce_project_id", "", "GCE project ID; required if not running on GCE and gce_log_name is specified.")
 	gceLogName   = flag.String("gce_log_name", "", "GCE Cloud Logging log name; if non-empty, logs go to Cloud Logging instead of Apache-style local disk log files")
@@ -91,6 +89,14 @@ var (
 
 	pageHTML, errorHTML, camliErrorHTML *template.Template
 	packageHTML                         *txttemplate.Template
+
+	buildbotBackend, buildbotHost string
+
+	// file extensions checked in order to satisfy file requests
+	fileExtensions = []string{".md", ".html"}
+
+	// files used to satisfy directory requests
+	indexFiles = []string{"index.html", "README.md"}
 )
 
 var fmap = template.FuncMap{
@@ -164,13 +170,15 @@ func servePage(w http.ResponseWriter, title, subtitle string, content []byte) {
 		content = bytes.Replace(content, []byte("<p>"), []byte(toInsert), 1)
 	}
 	d := struct {
-		Title    string
-		Subtitle string
-		Content  template.HTML
+		Title     string
+		Subtitle  string
+		Content   template.HTML
+		IsMonthly bool
 	}{
 		title,
 		subtitle,
 		template.HTML(content),
+		strings.HasPrefix(title, "Monthly Release"),
 	}
 
 	if err := pageHTML.ExecuteTemplate(w, "page", &d); err != nil {
@@ -228,6 +236,25 @@ func redirectPath(u *url.URL) string {
 		// Assume it's a commit
 		return gerritURLPrefix + path
 	}
+
+	if strings.HasPrefix(u.Path, "/docs/") {
+		return "/doc/" + strings.TrimPrefix(u.Path, "/docs/")
+	}
+
+	// strip directory index files
+	for _, x := range indexFiles {
+		if strings.HasSuffix(u.Path, "/"+x) {
+			return strings.TrimSuffix(u.Path, x)
+		}
+	}
+
+	// strip common file extensions
+	for _, x := range fileExtensions {
+		if strings.HasSuffix(u.Path, x) {
+			return strings.TrimSuffix(u.Path, x)
+		}
+	}
+
 	return ""
 }
 
@@ -242,35 +269,16 @@ func mainHandler(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	relPath := req.URL.Path[1:] // serveFile URL paths start with '/'
-	if strings.Contains(relPath, "..") {
+	findAndServeFile(rw, req, filepath.Join(*root, "content"))
+}
+
+func docHandler(rw http.ResponseWriter, req *http.Request) {
+	if target := redirectPath(req.URL); target != "" {
+		http.Redirect(rw, req, target, http.StatusFound)
 		return
 	}
 
-	absPath := filepath.Join(*root, "content", relPath)
-	fi, err := os.Lstat(absPath)
-	if err != nil {
-		log.Print(err)
-		serveError(rw, req, relPath, err)
-		return
-	}
-	if fi.IsDir() {
-		relPath += "/index.html"
-		absPath = filepath.Join(*root, "content", relPath)
-		fi, err = os.Lstat(absPath)
-		if err != nil {
-			log.Print(err)
-			serveError(rw, req, relPath, err)
-			return
-		}
-	}
-
-	if !fi.IsDir() {
-		if checkLastModified(rw, req, fi.ModTime()) {
-			return
-		}
-		serveFile(rw, req, relPath, absPath)
-	}
+	findAndServeFile(rw, req, filepath.Dir(*root))
 }
 
 // modtime is the modification time of the resource to be served, or IsZero().
@@ -293,14 +301,113 @@ func checkLastModified(w http.ResponseWriter, r *http.Request, modtime time.Time
 	return false
 }
 
+// findAndServeFile finds the file in root to satisfy req.  This method will
+// map URLs to exact filename matches, falling back to files ending in ".md" or
+// ".html".  For example, a request for "/foo" may be served by a file named
+// foo, foo.md, or foo.html.  Requests that map to directories may be served by
+// an index.html or README.md file in that directory.
+func findAndServeFile(rw http.ResponseWriter, req *http.Request, root string) {
+	relPath := req.URL.Path[1:] // serveFile URL paths start with '/'
+	if strings.Contains(relPath, "..") {
+		return
+	}
+
+	var (
+		absPath string
+		fi      os.FileInfo
+		err     error
+	)
+
+	for _, ext := range append([]string{""}, fileExtensions...) {
+		absPath = filepath.Join(root, relPath+ext)
+		fi, err = os.Lstat(absPath)
+		if err == nil || !os.IsNotExist(err) {
+			break
+		}
+	}
+	if err != nil {
+		log.Print(err)
+		serveError(rw, req, relPath, err)
+		return
+	}
+
+	// If it's a directory without a trailing slash, redirect to
+	// the URL with a trailing slash so relative links within that
+	// directory work.
+	if fi.IsDir() && !strings.HasSuffix(req.URL.Path, "/") {
+		http.Redirect(rw, req, req.URL.Path+"/", http.StatusFound)
+		return
+	}
+
+	// if directory request, try to find an index file
+	if fi.IsDir() {
+		for _, index := range indexFiles {
+			absPath = filepath.Join(root, relPath, index)
+			fi, err = os.Lstat(absPath)
+			if err != nil {
+				if os.IsNotExist(err) {
+					// didn't find this file, try the next
+					continue
+				}
+				log.Print(err)
+				serveError(rw, req, relPath, err)
+				return
+			}
+			break
+		}
+	}
+
+	if fi.IsDir() {
+		log.Printf("Error serving website content: %q is a directory", absPath)
+		serveError(rw, req, relPath, fmt.Errorf("error: %q is a directory", absPath))
+		return
+	}
+
+	if checkLastModified(rw, req, fi.ModTime()) {
+		return
+	}
+	serveFile(rw, req, relPath, absPath)
+}
+
+// configure blackfriday options.  These are the same options that
+// blackfriday.MarkdownCommon uses with minor additions.
+const (
+	markdownHTMLFlags = 0 |
+		blackfriday.HTML_USE_XHTML |
+		blackfriday.HTML_USE_SMARTYPANTS |
+		blackfriday.HTML_SMARTYPANTS_FRACTIONS |
+		blackfriday.HTML_SMARTYPANTS_DASHES |
+		blackfriday.HTML_SMARTYPANTS_LATEX_DASHES
+
+	markdownExtensions = 0 |
+		blackfriday.EXTENSION_NO_INTRA_EMPHASIS |
+		blackfriday.EXTENSION_TABLES |
+		blackfriday.EXTENSION_FENCED_CODE |
+		blackfriday.EXTENSION_AUTOLINK |
+		blackfriday.EXTENSION_STRIKETHROUGH |
+		blackfriday.EXTENSION_SPACE_HEADERS |
+		blackfriday.EXTENSION_HEADER_IDS |
+		blackfriday.EXTENSION_BACKSLASH_LINE_BREAK |
+		blackfriday.EXTENSION_DEFINITION_LISTS |
+		blackfriday.EXTENSION_AUTO_HEADER_IDS
+)
+
+var markdownRenderer = blackfriday.HtmlRenderer(markdownHTMLFlags, "", "")
+
+// serveFile serves a file from disk, converting any markdown to HTML.
 func serveFile(rw http.ResponseWriter, req *http.Request, relPath, absPath string) {
+	if !strings.HasSuffix(absPath, ".html") && !strings.HasSuffix(absPath, ".md") {
+		http.ServeFile(rw, req, absPath)
+		return
+	}
+
 	data, err := ioutil.ReadFile(absPath)
 	if err != nil {
 		serveError(rw, req, absPath, err)
 		return
 	}
 
-	data = blackfriday.MarkdownCommon(data)
+	data = blackfriday.MarkdownOptions(data, markdownRenderer, blackfriday.Options{Extensions: markdownExtensions})
 
 	title := ""
 	if m := h1TitlePattern.FindSubmatch(data); len(m) > 1 {
@@ -316,11 +423,13 @@ func isBot(r *http.Request) bool {
 		strings.Contains(agent, "Ezooms") || strings.Contains(agent, "Googlebot")
 }
 
-type noWwwHandler struct {
+// redirectRootHandler redirects users to strip off "www." prefixes
+// and redirects http to https.
+type redirectRootHandler struct {
 	Handler http.Handler
 }
 
-func (h *noWwwHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+func (h *redirectRootHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	// Some bots (especially Baidu) don't seem to respect robots.txt and swamp gitweb.cgi,
 	// so explicitly protect it from bots.
 	if ru := r.URL.RequestURI(); strings.Contains(ru, "/code/") && strings.Contains(ru, "?") && isBot(r) {
@@ -330,12 +439,8 @@ func (h *noWwwHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	host := strings.ToLower(r.Host)
-	if host == "www.camlistore.org" {
-		scheme := "https"
-		if r.TLS == nil {
-			scheme = "http"
-		}
-		http.Redirect(rw, r, scheme+"://camlistore.org"+r.URL.RequestURI(), http.StatusFound)
+	if host == "www.camlistore.org" || (inProd && r.TLS == nil) {
+		http.Redirect(rw, r, "https://camlistore.org"+r.URL.RequestURI(), http.StatusFound)
 		return
 	}
 	h.Handler.ServeHTTP(rw, r)
@@ -443,7 +548,6 @@ var launchConfig = &cloudlaunch.Config{
 		compute.ComputeScope,
 		logging.Scope,
 		datastore.ScopeDatastore,
-		datastore.ScopeUserEmail, // whose email? https://github.com/GoogleCloudPlatform/gcloud-golang/issues/201
 	},
 }
 
@@ -471,8 +575,8 @@ func setProdFlags() {
 	*flagChromeBugRepro = true
 	*httpAddr = ":80"
 	*httpsAddr = ":443"
-	*buildbotBackend = "https://travis-ci.org/camlistore/camlistore"
-	*buildbotHost = "build.camlistore.org"
+	buildbotBackend = "https://travis-ci.org/camlistore/camlistore"
+	buildbotHost = "build.camlistore.org"
 	*gceLogName = "camweb-access-log"
 	*root = filepath.Join(prodSrcDir, "website")
 	*gitContainer = true
@@ -495,7 +599,6 @@ func setProdFlags() {
 		"camlistore/git",
 		"git",
 		"clone",
-		"--depth=1",
 		"https://camlistore.googlesource.com/camlistore",
 		prodSrcDir).CombinedOutput()
 	if err != nil {
@@ -512,6 +615,43 @@ func randHex(n int) string {
 	return fmt.Sprintf("%x", buf)[:n]
 }
 
+func removeDemoContainer(name string) {
+	if err := exec.Command("docker", "kill", name).Run(); err == nil {
+		// It was actually running.
+		log.Printf("Killed old %q container.", name)
+	}
+	if err := exec.Command("docker", "rm", name).Run(); err == nil {
+		// Always try to remove, in case we end up with a stale,
+		// non-running one (which has happened in the past).
+		log.Printf("Removed old %q container.", name)
+	}
+}
+
+// runDemoBlobServerContainer runs the demo blobserver as name in a docker
+// container. It is not run in daemon mode, so it never returns if successful.
+func runDemoBlobServerContainer(name string) error {
+	removeDemoContainer(name)
+	cmd := exec.Command("docker", "run",
+		"--rm",
+		"--name="+name,
+		"-e", "CAMLI_ROOT="+prodSrcDir+"/website/blobserver-example/root",
+		"-e", "CAMLI_PASSWORD="+randHex(20),
+		"-v", camSrcDir()+":"+prodSrcDir,
+		"--net=host",
+		"--workdir="+prodSrcDir,
+		"camlistore/demoblobserver",
+		"camlistored",
+		"--openbrowser=false",
+		"--listen=:3179",
+		"--configfile="+prodSrcDir+"/website/blobserver-example/example-blobserver-config.json")
+	stderr := &writerutil.PrefixSuffixSaver{N: 32 << 10}
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to run demo blob server: %v, stderr: %v", err, string(stderr.Bytes()))
+	}
+	return nil
+}
+
 func runDemoBlobserverLoop() {
 	if runtime.GOOS != "linux" {
 		return
@@ -519,33 +659,12 @@ func runDemoBlobserverLoop() {
 	if _, err := exec.LookPath("docker"); err != nil {
 		return
 	}
-	const name = "demoblob3179"
-	if err := exec.Command("docker", "kill", name).Run(); err == nil {
-		// It was actually running.
-		exec.Command("docker", "rm", name).Run()
-		log.Printf("Killed, removed old %q container.", name)
-	}
 	for {
-		var stderr bytes.Buffer
-		cmd := exec.Command("docker", "run",
-			"--rm",
-			"--name="+name,
-			"-e", "CAMLI_ROOT="+prodSrcDir+"/website/blobserver-example/root",
-			"-e", "CAMLI_PASSWORD="+randHex(20),
-			"-v", camSrcDir()+":"+prodSrcDir,
-			"--net=host",
-			"--workdir="+prodSrcDir,
-			"camlistore/demoblobserver",
-			"camlistored",
-			"--openbrowser=false",
-			"--listen=:3179",
-			"--configfile="+prodSrcDir+"/website/blobserver-example/example-blobserver-config.json")
-		cmd.Stderr = &stderr
-		err := cmd.Run()
-		if err != nil {
-			log.Printf("Failed to run demo blob server: %v, stderr: %v", err, stderr.String())
+		if err := runDemoBlobServerContainer("demoblob3179"); err != nil {
+			log.Printf("%v", err)
 		}
 		if !inProd {
+			// Do not bother retrying if we're most likely just testing on localhost
 			return
 		}
 		time.Sleep(10 * time.Second)
@@ -656,6 +775,9 @@ func main() {
 		}
 	}
 	readTemplates()
+	if err := initGithubSyncing(); err != nil {
+		log.Fatalf("error setting up syncing to github: %v")
+	}
 	go runDemoBlobserverLoop()
 
 	mux := http.DefaultServeMux
@@ -665,26 +787,28 @@ func main() {
 	mux.Handle("/talks/", http.StripPrefix("/talks/", http.FileServer(http.Dir(filepath.Join(*root, "talks")))))
 	mux.Handle(pkgPattern, godocHandler{})
 	mux.Handle(cmdPattern, godocHandler{})
+	mux.Handle(appPattern, godocHandler{})
 	mux.HandleFunc(errPattern, errHandler)
 
 	mux.HandleFunc("/r/", gerritRedirect)
 	mux.HandleFunc("/dl/", releaseRedirect)
 	mux.HandleFunc("/debug/ip", ipHandler)
 	mux.HandleFunc("/debug/uptime", uptimeHandler)
-	mux.Handle("/docs/contributing", redirTo("/code#contributing"))
+	mux.Handle("/doc/contributing", redirTo("/code#contributing"))
 	mux.Handle("/lists", redirTo("/community"))
 
 	mux.HandleFunc("/contributors", contribHandler())
+	mux.HandleFunc("/doc/", docHandler)
 	mux.HandleFunc("/", mainHandler)
 
-	if *buildbotHost != "" && *buildbotBackend != "" {
-		buildbotUrl, err := url.Parse(*buildbotBackend)
-		if err != nil {
-			log.Fatalf("Failed to parse %v as a URL: %v", *buildbotBackend, err)
+	if buildbotHost != "" && buildbotBackend != "" {
+		if _, err := url.Parse(buildbotBackend); err != nil {
+			log.Fatalf("Failed to parse %v as a URL: %v", buildbotBackend, err)
 		}
-		buildbotHandler := httputil.NewSingleHostReverseProxy(buildbotUrl)
-		bbhpattern := strings.TrimRight(*buildbotHost, "/") + "/"
-		mux.Handle(bbhpattern, buildbotHandler)
+		bbhpattern := strings.TrimRight(buildbotHost, "/") + "/"
+		mux.HandleFunc(bbhpattern, func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, buildbotBackend, http.StatusFound)
+		})
 	}
 
 	// ctx initialized now, because gceLauncher needs it first (when in prod).
@@ -706,7 +830,7 @@ func main() {
 		mux.Handle("/launch/", gceLauncher)
 	}
 
-	var handler http.Handler = &noWwwHandler{Handler: mux}
+	var handler http.Handler = &redirectRootHandler{Handler: mux}
 	if *logDir != "" || *logStdout {
 		handler = NewLoggingHandler(handler, NewApacheLogger(*logDir, *logStdout))
 	}

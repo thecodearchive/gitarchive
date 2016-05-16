@@ -21,9 +21,13 @@ limitations under the License.
 // times. In that context, (un)deletions (of permanodes, or attributes)
 // are not considered modifications and therefore the time at which they
 // occured does not affect the result.
-package search
+package search // import "camlistore.org/pkg/search"
+
+import (
+	"golang.org/x/net/context"
+)
 
 type QueryDescriber interface {
 	Query(*SearchQuery) (*SearchResult, error)
-	Describe(*DescribeRequest) (*DescribeResponse, error)
+	Describe(context.Context, *DescribeRequest) (*DescribeResponse, error)
 }

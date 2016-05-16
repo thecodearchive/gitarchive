@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package foursquare implements an importer for foursquare.com accounts.
-package foursquare
+package foursquare // import "camlistore.org/pkg/importer/foursquare"
 
 import (
 	"fmt"
@@ -36,10 +36,9 @@ import (
 	"camlistore.org/pkg/schema"
 	"camlistore.org/pkg/schema/nodeattr"
 
-	"camlistore.org/third_party/code.google.com/p/goauth2/oauth"
-
 	"go4.org/ctxutil"
 	"golang.org/x/net/context"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -56,7 +55,7 @@ const (
 	// complete run.  Otherwise, if the importer runs to
 	// completion, this version number is recorded on the account
 	// permanode and subsequent importers can stop early.
-	runCompleteVersion = "1"
+	runCompleteVersion = "2"
 
 	// Permanode attributes on account node:
 	acctAttrUserId      = "foursquareUserId"
@@ -87,8 +86,12 @@ type imp struct {
 	importer.OAuth2 // for CallbackRequestAccount and CallbackURLParameters
 }
 
-func (im *imp) NeedsAPIKey() bool         { return true }
-func (im *imp) SupportsIncremental() bool { return true }
+func (im *imp) NeedsAPIKey() bool {
+	return true
+}
+func (im *imp) SupportsIncremental() bool {
+	return true
+}
 
 func (im *imp) IsAccountReady(acctNode *importer.Object) (ok bool, err error) {
 	if acctNode.Attr(acctAttrUserId) != "" && acctNode.Attr(acctAttrAccessToken) != "" {
@@ -183,7 +186,7 @@ func (r *run) urlFileRef(urlstr, filename string) string {
 	}
 	im.mu.Unlock()
 
-	res, err := ctxutil.Client(r).Get(urlstr)
+	res, err := ctxutil.Client(r.Context()).Get(urlstr)
 	if err != nil {
 		log.Printf("couldn't get image: %v", err)
 		return ""
@@ -204,9 +207,15 @@ func (r *run) urlFileRef(urlstr, filename string) string {
 
 type byCreatedAt []*checkinItem
 
-func (s byCreatedAt) Less(i, j int) bool { return s[i].CreatedAt < s[j].CreatedAt }
-func (s byCreatedAt) Len() int           { return len(s) }
-func (s byCreatedAt) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s byCreatedAt) Less(i, j int) bool {
+	return s[i].CreatedAt < s[j].CreatedAt
+}
+func (s byCreatedAt) Len() int {
+	return len(s)
+}
+func (s byCreatedAt) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
 
 func (r *run) importCheckins() error {
 	limit := checkinsRequestLimit
@@ -215,7 +224,7 @@ func (r *run) importCheckins() error {
 
 	for continueRequests {
 		resp := checkinsList{}
-		if err := r.im.doAPI(r.Context, r.token(), &resp, checkinsAPIPath, "limit", strconv.Itoa(limit), "offset", strconv.Itoa(offset)); err != nil {
+		if err := r.im.doAPI(r.Context(), r.token(), &resp, checkinsAPIPath, "limit", strconv.Itoa(limit), "offset", strconv.Itoa(offset)); err != nil {
 			return err
 		}
 
@@ -237,18 +246,29 @@ func (r *run) importCheckins() error {
 			return err
 		}
 
+		pplNode, err := r.getTopLevelNode("people", "People")
+		if err != nil {
+			return err
+		}
+
 		sort.Sort(byCreatedAt(resp.Response.Checkins.Items))
 		sawOldItem := false
 		for _, checkin := range resp.Response.Checkins.Items {
 			placeNode, err := r.importPlace(placesNode, &checkin.Venue)
 			if err != nil {
-				r.errorf("Foursquare importer: error importing place %s %v", checkin.Venue.Id, err)
+				r.errorf("Foursquare importer: error importing place %s: %v", checkin.Venue.Id, err)
 				continue
 			}
 
-			_, dup, err := r.importCheckin(checkinsNode, checkin, placeNode.PermanodeRef())
+			companionRefs, err := r.importCompanions(pplNode, checkin.With)
 			if err != nil {
-				r.errorf("Foursquare importer: error importing checkin %s %v", checkin.Id, err)
+				r.errorf("Foursquare importer: error importing companions for checkin %s: %v", checkin.Id, err)
+				continue
+			}
+
+			_, dup, err := r.importCheckin(checkinsNode, checkin, placeNode.PermanodeRef(), companionRefs)
+			if err != nil {
+				r.errorf("Foursquare importer: error importing checkin %s: %v", checkin.Id, err)
 				continue
 			}
 
@@ -258,7 +278,7 @@ func (r *run) importCheckins() error {
 
 			err = r.importPhotos(placeNode, dup)
 			if err != nil {
-				r.errorf("Foursquare importer: error importing photos for checkin %s %v", checkin.Id, err)
+				r.errorf("Foursquare importer: error importing photos for checkin %s: %v", checkin.Id, err)
 				continue
 			}
 		}
@@ -297,7 +317,7 @@ func (r *run) importPhotos(placeNode *importer.Object, checkinWasDup bool) error
 	}
 
 	resp := photosList{}
-	if err := r.im.doAPI(r.Context, r.token(), &resp,
+	if err := r.im.doAPI(r.Context(), r.token(), &resp,
 		"venues/"+placeNode.Attr(attrFoursquareId)+"/photos",
 		"limit", strconv.Itoa(nWant)); err != nil {
 		return err
@@ -335,7 +355,7 @@ func (r *run) importPhotos(placeNode *importer.Object, checkinWasDup bool) error
 	return nil
 }
 
-func (r *run) importCheckin(parent *importer.Object, checkin *checkinItem, placeRef blob.Ref) (checkinNode *importer.Object, dup bool, err error) {
+func (r *run) importCheckin(parent *importer.Object, checkin *checkinItem, placeRef blob.Ref, companionRefs []string) (checkinNode *importer.Object, dup bool, err error) {
 	checkinNode, err = parent.ChildPathObject(checkin.Id)
 	if err != nil {
 		return
@@ -351,7 +371,33 @@ func (r *run) importCheckin(parent *importer.Object, checkin *checkinItem, place
 		nodeattr.Title, title); err != nil {
 		return nil, false, err
 	}
+
+	if err := checkinNode.SetAttrValues("with", companionRefs); err != nil {
+		return nil, false, err
+	}
+
 	return checkinNode, dup, nil
+}
+
+func (r *run) importCompanions(parent *importer.Object, companions []*user) (companionRefs []string, err error) {
+	for _, user := range companions {
+		personNode, err := parent.ChildPathObject(user.Id)
+		if err != nil {
+			return nil, err
+		}
+		icon := user.icon()
+		if err := personNode.SetAttrs(
+			attrFoursquareId, user.Id,
+			nodeattr.Type, "foursquare.com:person",
+			nodeattr.Title, user.FirstName+" "+user.LastName,
+			nodeattr.CamliContentImage, r.urlFileRef(icon, path.Base(icon)),
+			nodeattr.GivenName, user.FirstName,
+			nodeattr.FamilyName, user.LastName); err != nil {
+			return nil, err
+		}
+		companionRefs = append(companionRefs, personNode.PermanodeRef().String())
+	}
+	return companionRefs, nil
 }
 
 func (r *run) importPlace(parent *importer.Object, place *venueItem) (*importer.Object, error) {
@@ -366,19 +412,24 @@ func (r *run) importPlace(parent *importer.Object, place *venueItem) (*importer.
 	}
 
 	icon := place.icon()
-	if err := placeNode.SetAttrs(
+	attrs := []string{
 		attrFoursquareId, place.Id,
 		nodeattr.Type, "foursquare.com:venue",
 		nodeattr.CamliContentImage, r.urlFileRef(icon, path.Base(icon)),
 		attrFoursquareCategoryName, catName,
 		nodeattr.Title, place.Name,
-		nodeattr.StreetAddress, place.Location.Address,
-		nodeattr.AddressLocality, place.Location.City,
-		nodeattr.PostalCode, place.Location.PostalCode,
-		nodeattr.AddressRegion, place.Location.State,
-		nodeattr.AddressCountry, place.Location.Country,
-		nodeattr.Latitude, fmt.Sprint(place.Location.Lat),
-		nodeattr.Longitude, fmt.Sprint(place.Location.Lng)); err != nil {
+	}
+	if place.Location != nil {
+		attrs = append(attrs,
+			nodeattr.StreetAddress, place.Location.Address,
+			nodeattr.AddressLocality, place.Location.City,
+			nodeattr.PostalCode, place.Location.PostalCode,
+			nodeattr.AddressRegion, place.Location.State,
+			nodeattr.AddressCountry, place.Location.Country,
+			nodeattr.Latitude, fmt.Sprint(place.Location.Lat),
+			nodeattr.Longitude, fmt.Sprint(place.Location.Lng))
+	}
+	if err := placeNode.SetAttrs(attrs...); err != nil {
 		return nil, err
 	}
 
@@ -449,18 +500,21 @@ func doGet(ctx context.Context, url string, form url.Values) (*http.Response, er
 	return res, nil
 }
 
-// auth returns a new oauth.Config
-func auth(ctx *importer.SetupContext) (*oauth.Config, error) {
-	clientId, secret, err := ctx.Credentials()
+// auth returns a new oauth2 Config
+func auth(ctx *importer.SetupContext) (*oauth2.Config, error) {
+	clientID, secret, err := ctx.Credentials()
 	if err != nil {
 		return nil, err
 	}
-	return &oauth.Config{
-		ClientId:     clientId,
+	return &oauth2.Config{
+		ClientID:     clientID,
 		ClientSecret: secret,
-		AuthURL:      authURL,
-		TokenURL:     tokenURL,
-		RedirectURL:  ctx.CallbackURL(),
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  authURL,
+			TokenURL: tokenURL,
+		},
+		RedirectURL: ctx.CallbackURL(),
+		// No scope needed for foursquare as far as I can tell
 	}, nil
 }
 
@@ -494,8 +548,7 @@ func (im *imp) ServeCallback(w http.ResponseWriter, r *http.Request, ctx *import
 		http.Error(w, "Expected a code", 400)
 		return
 	}
-	transport := &oauth.Transport{Config: oauthConfig}
-	token, err := transport.Exchange(code)
+	token, err := oauthConfig.Exchange(ctx, code)
 	log.Printf("Token = %#v, error %v", token, err)
 	if err != nil {
 		log.Printf("Token Exchange error: %v", err)

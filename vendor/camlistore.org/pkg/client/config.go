@@ -207,7 +207,7 @@ func printConfigChangeHelp(conf jsonconfig.Obj) {
 		}
 	}
 	if oldConfig {
-		configChangedMsg += "Please see http://camlistore.org/docs/client-config, or use camput init to recreate a default one."
+		configChangedMsg += "Please see https://camlistore.org/doc/client-config, or use camput init to recreate a default one."
 		log.Print(configChangedMsg)
 	}
 }
@@ -285,14 +285,6 @@ func defaultServer() string {
 		}
 	}
 	return ""
-}
-
-func (c *Client) serverOrDefault() string {
-	configOnce.Do(parseConfig)
-	if c.server != "" {
-		return cleanServer(c.server)
-	}
-	return defaultServer()
 }
 
 func (c *Client) useTLS() bool {

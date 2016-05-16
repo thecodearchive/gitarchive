@@ -16,7 +16,7 @@ limitations under the License.
 
 // Package mysql provides an implementation of sorted.KeyValue
 // on top of MySQL.
-package mysql
+package mysql // import "camlistore.org/pkg/sorted/mysql"
 
 import (
 	"database/sql"
@@ -31,7 +31,7 @@ import (
 	"camlistore.org/pkg/env"
 	"camlistore.org/pkg/sorted"
 	"camlistore.org/pkg/sorted/sqlkv"
-	_ "camlistore.org/third_party/github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	"go4.org/jsonconfig"
 	"go4.org/syncutil"
 )

@@ -15,14 +15,13 @@ limitations under the License.
 */
 
 // Package sqlindex implements the sorted.KeyValue interface using an *sql.DB.
-package sqlindex
+package sqlindex // import "camlistore.org/pkg/index/sqlindex"
 
 import (
 	"database/sql"
 	"errors"
 	"fmt"
 	"log"
-	"regexp"
 	"sync"
 
 	"camlistore.org/pkg/leak"
@@ -183,13 +182,10 @@ func (s *Storage) Find(start, end string) sorted.Iterator {
 	return it
 }
 
-var wordThenPunct = regexp.MustCompile(`^\w+\W$`)
-
 // iter is a iterator over sorted key/value pairs in rows.
 type iter struct {
 	s   *Storage
-	end string // optional end bound
-	err error  // accumulated error, returned at Close
+	err error // accumulated error, returned at Close
 
 	closeCheck *leak.Checker
 

@@ -19,7 +19,7 @@ limitations under the License.
 // Among other things, it can throttle its connections, inherit its
 // listening socket from a file descriptor in the environment, and
 // log all activity.
-package webserver
+package webserver // import "camlistore.org/pkg/webserver"
 
 import (
 	"bufio"
@@ -36,7 +36,7 @@ import (
 	"sync"
 	"time"
 
-	"camlistore.org/third_party/github.com/bradfitz/runsit/listen"
+	"github.com/bradfitz/runsit/listen"
 
 	"go4.org/net/throttle"
 	"go4.org/wkfs"

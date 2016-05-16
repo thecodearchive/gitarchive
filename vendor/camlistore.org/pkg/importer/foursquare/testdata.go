@@ -163,8 +163,19 @@ func fakeCheckinsList(offset, maxCheckin int, towns map[int]*venueLocationItem, 
 	for i := offset; i < max; i++ {
 		shout := fmt.Sprintf("fakeShout %d", i)
 		item := &checkinItem{
-			Id:             blob.RefFromString(shout).DigestPrefix(10),
-			Shout:          shout,
+			Id:    blob.RefFromString(shout).DigestPrefix(10),
+			Shout: shout,
+			With: []*user{
+				{
+					Id:        "123",
+					FirstName: "Kate",
+					LastName:  "Pek",
+					Photo: photoItem{
+						Prefix: "https://irs3.4sqi.net/img/user/",
+						Suffix: "/13674-S2IUMHALCCJJUTQO.jpg",
+					},
+				},
+			},
 			CreatedAt:      time.Now().Unix(),
 			TimeZoneOffset: tzCounter * 60,
 			Venue:          fakeVenue(venueCounter, towns),
@@ -265,5 +276,5 @@ func fakePhoto() string {
 	if err != nil {
 		log.Fatalf("Error searching for \"camlistore.org\" under GOPATH: %v", err)
 	}
-	return filepath.Join(camliDir, filepath.FromSlash("third_party/glitch/npc_piggy__x1_walk_png_1354829432.png"))
+	return filepath.Join(camliDir, filepath.FromSlash("vendor/embed/glitch/npc_piggy__x1_walk_png_1354829432.png"))
 }

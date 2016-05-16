@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package importer imports content from third-party websites.
-package importer
+package importer // import "camlistore.org/pkg/importer"
 
 import (
 	"errors"
@@ -63,9 +63,9 @@ type Importer interface {
 	// Run runs a full or incremental import.
 	//
 	// The importer should continually or periodically monitor the
-	// context's Done channel to exit early if requested. The
-	// return value should be ctx.Err() if the importer
-	// exits for that reason.
+	// RunContext.Context()'s Done channel to exit early if
+	// requested. The return value should be ctx.Err() if the
+	// importer exits for that reason.
 	Run(*RunContext) error
 
 	// NeedsAPIKey reports whether this importer requires an API key
@@ -99,6 +99,18 @@ type Importer interface {
 	// CallbackURLParameters uses the input importer account blobRef to build
 	// and return the URL parameters, that will be appended to the callback URL.
 	CallbackURLParameters(acctRef blob.Ref) url.Values
+}
+
+// LongPoller is optionally implemented by importers which can long
+// poll efficiently to wait for new content.
+// For example, Twitter uses this to subscribe to the user's stream.
+type LongPoller interface {
+	Importer
+
+	// LongPoll waits and returns nil when there's new content.
+	// It does not fetch the content itself.
+	// It returns a non-nil error if it failed to long poll.
+	LongPoll(*RunContext) error
 }
 
 // TestDataMaker is an optional interface that may be implemented by Importers to
@@ -274,7 +286,7 @@ func (sc *SetupContext) AccountURL() string {
 // RunContext is the context provided for a given Run of an importer, importing
 // a certain account on a certain importer.
 type RunContext struct {
-	context.Context
+	ctx    context.Context
 	cancel context.CancelFunc // for when we stop/pause the importing
 	Host   *Host
 
@@ -282,6 +294,14 @@ type RunContext struct {
 
 	mu           sync.Mutex // guards following
 	lastProgress *ProgressMessage
+}
+
+// Context returns the run's context. It is always non-nil.
+func (rc *RunContext) Context() context.Context {
+	if rc.ctx != nil {
+		return rc.ctx
+	}
+	return context.Background()
 }
 
 // CreateAccount creates a new importer account for the Host h, and the importer
@@ -296,11 +316,10 @@ func CreateAccount(h *Host, impl string) (*RunContext, error) {
 		return nil, fmt.Errorf("could not create new account for importer %v: %v", impl, err)
 	}
 	rc := &RunContext{
-		// TODO: context plumbing
 		Host: ia.im.host,
 		ia:   ia,
 	}
-	rc.Context, rc.cancel = context.WithCancel(context.WithValue(context.TODO(), ctxutil.HTTPClient, ia.im.host.HTTPClient()))
+	rc.ctx, rc.cancel = context.WithCancel(context.WithValue(context.Background(), ctxutil.HTTPClient, ia.im.host.HTTPClient()))
 	return rc, nil
 
 }
@@ -642,8 +661,27 @@ func (ia *importerAcct) maybeStart() {
 	}
 	if ia.lastRunDone.After(time.Now().Add(-duration)) {
 		sleepFor := ia.lastRunDone.Add(duration).Sub(time.Now())
+		sleepCtx, _ := context.WithTimeout(context.Background(), sleepFor)
 		log.Printf("%v ran recently enough. Sleeping for %v.", ia, sleepFor)
-		time.AfterFunc(sleepFor, ia.maybeStart)
+		timer := time.AfterFunc(sleepFor, ia.maybeStart)
+
+		// Kick off long poller wait if supported.
+		if lp, ok := ia.im.impl.(LongPoller); ok {
+			rc := &RunContext{
+				ctx:  sleepCtx,
+				Host: ia.im.host,
+				ia:   ia,
+			}
+			go func() {
+				if err := lp.LongPoll(rc); err == nil {
+					log.Printf("Long poll for %s found an update. Starting run...", ia)
+					timer.Stop()
+					ia.start()
+				} else {
+					log.Printf("failed to long poll %s: %v", ia, err)
+				}
+			}()
+		}
 		return
 	}
 
@@ -687,8 +725,9 @@ type importer struct {
 	nodemu    sync.Mutex // guards nodeCache
 	nodeCache *Object    // or nil if unset
 
-	acctmu sync.Mutex
-	acct   map[blob.Ref]*importerAcct // key: account permanode
+	acctmu    sync.Mutex
+	acct      map[blob.Ref]*importerAcct // key: account permanode
+	allLoaded bool
 }
 
 func (im *importer) Name() string { return im.name }
@@ -808,6 +847,7 @@ func (im *importer) account(nodeRef blob.Ref) (*importerAcct, error) {
 }
 
 func (im *importer) newAccount() (*importerAcct, error) {
+
 	acct, err := im.host.NewObject()
 	if err != nil {
 		return nil, err
@@ -844,25 +884,37 @@ func (im *importer) addAccountLocked(ia *importerAcct) {
 }
 
 func (im *importer) Accounts() ([]*importerAcct, error) {
-	var accts []*importerAcct
+	im.acctmu.Lock()
+	needQuery := !im.allLoaded
+	im.acctmu.Unlock()
 
-	// TODO: cache this search. invalidate when new accounts are made.
-	res, err := im.host.search.Query(&search.SearchQuery{
-		Expression: fmt.Sprintf("attr:%s:%s attr:%s:%s",
-			attrNodeType, nodeTypeImporterAccount,
-			attrImporterType, im.name,
-		),
-	})
-	if err != nil {
-		return nil, err
-	}
-	for _, res := range res.Blobs {
-		ia, err := im.account(res.Blob)
+	if needQuery {
+		res, err := im.host.search.Query(&search.SearchQuery{
+			Expression: fmt.Sprintf("attr:%s:%s attr:%s:%s",
+				attrNodeType, nodeTypeImporterAccount,
+				attrImporterType, im.name,
+			),
+		})
 		if err != nil {
 			return nil, err
 		}
+		for _, res := range res.Blobs {
+			_, err := im.account(res.Blob) // caches account
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	im.acctmu.Lock()
+	defer im.acctmu.Unlock()
+	im.allLoaded = true
+
+	accts := make([]*importerAcct, 0, len(im.acct))
+	for _, ia := range im.acct {
 		accts = append(accts, ia)
 	}
+	sort.Sort(byImporterAccountPermanode(accts))
 	return accts, nil
 }
 
@@ -1069,11 +1121,10 @@ func (ia *importerAcct) start() {
 		return
 	}
 	rc := &RunContext{
-		// TODO: context plumbing
 		Host: ia.im.host,
 		ia:   ia,
 	}
-	rc.Context, rc.cancel = context.WithCancel(context.WithValue(context.TODO(), ctxutil.HTTPClient, ia.im.host.HTTPClient()))
+	rc.ctx, rc.cancel = context.WithCancel(context.WithValue(context.Background(), ctxutil.HTTPClient, ia.im.host.HTTPClient()))
 	ia.current = rc
 	ia.stopped = false
 	ia.lastRunStart = time.Now()
@@ -1318,7 +1369,8 @@ func (o *Object) ChildPathObjectOrFunc(path string, fn func() (*Object, error)) 
 
 // ObjectFromRef returns the object given by the named permanode
 func (h *Host) ObjectFromRef(permanodeRef blob.Ref) (*Object, error) {
-	res, err := h.search.Describe(&search.DescribeRequest{
+	ctx := context.TODO()
+	res, err := h.search.Describe(ctx, &search.DescribeRequest{
 		BlobRef: permanodeRef,
 		Depth:   1,
 	})
@@ -1338,3 +1390,11 @@ func (h *Host) ObjectFromRef(permanodeRef blob.Ref) (*Object, error) {
 		attr: map[string][]string(db.Permanode.Attr),
 	}, nil
 }
+
+type byImporterAccountPermanode []*importerAcct
+
+func (s byImporterAccountPermanode) Len() int { return len(s) }
+func (s byImporterAccountPermanode) Less(i, j int) bool {
+	return s[i].acct.PermanodeRef().Less(s[j].acct.PermanodeRef())
+}
+func (s byImporterAccountPermanode) Swap(i, j int) { s[i], s[j] = s[j], s[i] }

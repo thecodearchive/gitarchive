@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package picasa implements an importer for picasa.com accounts.
-package picasa
+package picasa // import "camlistore.org/pkg/importer/picasa"
 
 // TODO: removing camliPath from gallery permanode when pic deleted from gallery
 
@@ -29,26 +29,23 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
+	"time"
 
 	"camlistore.org/pkg/blob"
+	"camlistore.org/pkg/httputil"
 	"camlistore.org/pkg/importer"
 	"camlistore.org/pkg/schema"
 	"camlistore.org/pkg/schema/nodeattr"
 	"camlistore.org/pkg/search"
-
-	"camlistore.org/third_party/code.google.com/p/goauth2/oauth"
-	"camlistore.org/third_party/github.com/tgulacsi/picago"
-
+	"github.com/tgulacsi/picago"
 	"go4.org/ctxutil"
 	"go4.org/syncutil"
 	"golang.org/x/net/context"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 )
 
 const (
-	apiURL   = "https://api.picasa.com/v2/"
-	authURL  = "https://accounts.google.com/o/oauth2/auth"
-	tokenURL = "https://accounts.google.com/o/oauth2/token"
 	scopeURL = "https://picasaweb.google.com/data/"
 
 	// runCompleteVersion is a cache-busting version number of the
@@ -61,52 +58,174 @@ const (
 
 	// attrPicasaId is used for both picasa photo IDs and gallery IDs.
 	attrPicasaId = "picasaId"
+
+	// acctAttrOAuthToken stores access + " " + refresh + " " + expiry
+	// See encodeToken and decodeToken.
+	acctAttrOAuthToken = "oauthToken"
 )
 
-var _ importer.ImporterSetupHTMLer = imp{}
+var (
+	_ importer.Importer            = imp{}
+	_ importer.ImporterSetupHTMLer = imp{}
+)
 
+func init() {
+	importer.Register("picasa", imp{})
+}
+
+// imp is the implementation of the Picasa importer.
 type imp struct {
-	extendedOAuth2
+	importer.OAuth2
 }
 
 func (imp) SupportsIncremental() bool { return true }
 
-var baseOAuthConfig = oauth.Config{
-	AuthURL:  authURL,
-	TokenURL: tokenURL,
-	Scope:    scopeURL,
-
-	// AccessType needs to be "offline", as the user is not here all the time;
-	// ApprovalPrompt needs to be "force" to be able to get a RefreshToken
-	// everytime, even for Re-logins, too.
-	//
-	// Source: https://developers.google.com/youtube/v3/guides/authentication#server-side-apps
-	AccessType:     "offline",
-	ApprovalPrompt: "force",
+type userInfo struct {
+	ID   string // numeric picasa user ID ("11583474931002155675")
+	Name string // "Jane Smith"
 }
 
-func init() {
-	importer.Register("picasa", imp{
-		newExtendedOAuth2(
-			baseOAuthConfig,
-			func(ctx context.Context) (*userInfo, error) {
+func (imp) getUserInfo(ctx context.Context) (*userInfo, error) {
+	u, err := picago.GetUser(ctxutil.Client(ctx), "default")
+	if err != nil {
+		return nil, err
+	}
+	return &userInfo{ID: u.ID, Name: u.Name}, nil
+}
 
-				u, err := picago.GetUser(ctxutil.Client(ctx), "default")
-				if err != nil {
-					return nil, err
-				}
-				firstName, lastName := u.Name, ""
-				i := strings.LastIndex(u.Name, " ")
-				if i >= 0 {
-					firstName, lastName = u.Name[:i], u.Name[i+1:]
-				}
-				return &userInfo{
-					ID:        u.ID,
-					FirstName: firstName,
-					LastName:  lastName,
-				}, nil
-			}),
-	})
+func (imp) IsAccountReady(acctNode *importer.Object) (ok bool, err error) {
+	if acctNode.Attr(importer.AcctAttrUserID) != "" && acctNode.Attr(acctAttrOAuthToken) != "" {
+		return true, nil
+	}
+	return false, nil
+}
+
+func (im imp) SummarizeAccount(acct *importer.Object) string {
+	ok, err := im.IsAccountReady(acct)
+	if err != nil || !ok {
+		return ""
+	}
+	if acct.Attr(importer.AcctAttrGivenName) == "" && acct.Attr(importer.AcctAttrFamilyName) == "" {
+		return fmt.Sprintf("userid %s", acct.Attr(importer.AcctAttrUserID))
+	}
+	return fmt.Sprintf("userid %s (%s %s)",
+		acct.Attr(importer.AcctAttrUserID),
+		acct.Attr(importer.AcctAttrGivenName),
+		acct.Attr(importer.AcctAttrFamilyName))
+}
+
+func (im imp) ServeSetup(w http.ResponseWriter, r *http.Request, ctx *importer.SetupContext) error {
+	oauthConfig, err := im.auth(ctx)
+	if err == nil {
+		// we will get back this with the token, so use it for preserving account info
+		state := "acct:" + ctx.AccountNode.PermanodeRef().String()
+		// AccessType needs to be "offline", as the user is not here all the time;
+		// ApprovalPrompt needs to be "force" to be able to get a RefreshToken
+		// everytime, even for Re-logins, too.
+		//
+		// Source: https://developers.google.com/youtube/v3/guides/authentication#server-side-apps
+		http.Redirect(w, r, oauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.ApprovalForce), 302)
+	}
+	return err
+}
+
+// CallbackURLParameters returns the needed callback parameters - empty for Google Picasa.
+func (im imp) CallbackURLParameters(acctRef blob.Ref) url.Values {
+	return url.Values{}
+}
+
+func (im imp) ServeCallback(w http.ResponseWriter, r *http.Request, ctx *importer.SetupContext) {
+	oauthConfig, err := im.auth(ctx)
+	if err != nil {
+		httputil.ServeError(w, r, fmt.Errorf("Error getting oauth config: %v", err))
+		return
+	}
+
+	if r.Method != "GET" {
+		http.Error(w, "Expected a GET", 400)
+		return
+	}
+	code := r.FormValue("code")
+	if code == "" {
+		http.Error(w, "Expected a code", 400)
+		return
+	}
+
+	token, err := oauthConfig.Exchange(ctx, code)
+	if err != nil {
+		log.Printf("importer/picasa: token exchange error: %v", err)
+		httputil.ServeError(w, r, fmt.Errorf("token exchange error: %v", err))
+		return
+	}
+
+	log.Printf("importer/picasa: got exhanged token.")
+	picagoCtx := context.WithValue(ctx, ctxutil.HTTPClient, oauthConfig.Client(ctx, token))
+
+	userInfo, err := im.getUserInfo(picagoCtx)
+	if err != nil {
+		log.Printf("Couldn't get username: %v", err)
+		httputil.ServeError(w, r, fmt.Errorf("can't get username: %v", err))
+		return
+	}
+
+	if err := ctx.AccountNode.SetAttrs(
+		importer.AcctAttrUserID, userInfo.ID,
+		importer.AcctAttrName, userInfo.Name,
+		acctAttrOAuthToken, encodeToken(token),
+	); err != nil {
+		httputil.ServeError(w, r, fmt.Errorf("Error setting attribute: %v", err))
+		return
+	}
+	http.Redirect(w, r, ctx.AccountURL(), http.StatusFound)
+}
+
+// encodeToken encodes the oauth2.Token as
+// AccessToken + " " + RefreshToken + " " + Expiry.Unix()
+func encodeToken(token *oauth2.Token) string {
+	if token == nil {
+		return ""
+	}
+	var seconds int64
+	if !token.Expiry.IsZero() {
+		seconds = token.Expiry.Unix()
+	}
+	return token.AccessToken + " " + token.RefreshToken + " " + strconv.FormatInt(seconds, 10)
+}
+
+// decodeToken parses an access token, refresh token, and optional
+// expiry unix timestamp separated by spaces into an oauth2.Token.
+// It returns as much as it can.
+func decodeToken(encoded string) *oauth2.Token {
+	t := new(oauth2.Token)
+	f := strings.Fields(encoded)
+	if len(f) > 0 {
+		t.AccessToken = f[0]
+	}
+	if len(f) > 1 {
+		t.RefreshToken = f[1]
+	}
+	if len(f) > 2 && f[2] != "0" {
+		sec, err := strconv.ParseInt(f[2], 10, 64)
+		if err == nil {
+			t.Expiry = time.Unix(sec, 0)
+		}
+	}
+	return t
+}
+
+func (im imp) auth(ctx *importer.SetupContext) (*oauth2.Config, error) {
+	clientID, secret, err := ctx.Credentials()
+	if err != nil {
+		return nil, err
+	}
+	conf := &oauth2.Config{
+		Endpoint:     google.Endpoint,
+		RedirectURL:  ctx.CallbackURL(),
+		ClientID:     clientID,
+		ClientSecret: secret,
+		Scopes:       []string{scopeURL},
+	}
+	return conf, nil
 }
 
 func (imp) AccountSetupHTML(host *importer.Host) string {
@@ -138,87 +257,74 @@ type run struct {
 	*importer.RunContext
 	incremental bool // whether we've completed a run in the past
 	photoGate   *syncutil.Gate
-
-	mu     sync.Mutex // guards anyErr
-	anyErr bool
-}
-
-func (r *run) errorf(format string, args ...interface{}) {
-	log.Printf(format, args...)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.anyErr = true
 }
 
 var forceFullImport, _ = strconv.ParseBool(os.Getenv("CAMLI_PICASA_FULL_IMPORT"))
 
-func (imp) Run(ctx *importer.RunContext) error {
-	clientId, secret, err := ctx.Credentials()
+func (imp) Run(rctx *importer.RunContext) error {
+	clientID, secret, err := rctx.Credentials()
 	if err != nil {
 		return err
 	}
-	acctNode := ctx.AccountNode()
-	ocfg := baseOAuthConfig
-	ocfg.ClientId, ocfg.ClientSecret = clientId, secret
-	token := decodeToken(acctNode.Attr(acctAttrOAuthToken))
-	transport := &oauth.Transport{
-		Config:    &ocfg,
-		Token:     &token,
-		Transport: notOAuthTransport(ctxutil.Client(ctx)),
-	}
-	ctx.Context = context.WithValue(ctx.Context, ctxutil.HTTPClient, transport.Client())
+	acctNode := rctx.AccountNode()
 
-	root := ctx.RootNode()
+	ocfg := &oauth2.Config{
+		Endpoint:     google.Endpoint,
+		ClientID:     clientID,
+		ClientSecret: secret,
+		Scopes:       []string{scopeURL},
+	}
+
+	token := decodeToken(acctNode.Attr(acctAttrOAuthToken))
+	baseCtx := rctx.Context()
+	ctx := context.WithValue(baseCtx, ctxutil.HTTPClient, ocfg.Client(baseCtx, token))
+
+	root := rctx.RootNode()
 	if root.Attr(nodeattr.Title) == "" {
-		if err := root.SetAttr(nodeattr.Title,
-			fmt.Sprintf("%s %s - Google/Picasa Photos",
-				acctNode.Attr(importer.AcctAttrGivenName),
-				acctNode.Attr(importer.AcctAttrFamilyName))); err != nil {
+		if err := root.SetAttr(
+			nodeattr.Title,
+			fmt.Sprintf("%s - Google Photos", acctNode.Attr(importer.AcctAttrName)),
+		); err != nil {
 			return err
 		}
 	}
 
 	r := &run{
-		RunContext:  ctx,
+		RunContext:  rctx,
 		incremental: !forceFullImport && acctNode.Attr(importer.AcctAttrCompletedVersion) == runCompleteVersion,
 		photoGate:   syncutil.NewGate(3),
 	}
-	if err := r.importAlbums(); err != nil {
+	if err := r.importAlbums(ctx); err != nil {
 		return err
 	}
 
-	r.mu.Lock()
-	anyErr := r.anyErr
-	r.mu.Unlock()
-	if !anyErr {
-		if err := acctNode.SetAttrs(importer.AcctAttrCompletedVersion, runCompleteVersion); err != nil {
-			return err
-		}
+	if err := acctNode.SetAttrs(importer.AcctAttrCompletedVersion, runCompleteVersion); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (r *run) importAlbums() error {
-	albums, err := picago.GetAlbums(ctxutil.Client(r), "default")
+func (r *run) importAlbums(ctx context.Context) error {
+	albums, err := picago.GetAlbums(ctxutil.Client(ctx), "default")
 	if err != nil {
 		return fmt.Errorf("importAlbums: error listing albums: %v", err)
 	}
 	albumsNode, err := r.getTopLevelNode("albums", "Albums")
 	for _, album := range albums {
 		select {
-		case <-r.Done():
-			return r.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		default:
 		}
-		if err := r.importAlbum(albumsNode, album); err != nil {
+		if err := r.importAlbum(ctx, albumsNode, album); err != nil {
 			return fmt.Errorf("picasa importer: error importing album %s: %v", album, err)
 		}
 	}
 	return nil
 }
 
-func (r *run) importAlbum(albumsNode *importer.Object, album picago.Album) (ret error) {
+func (r *run) importAlbum(ctx context.Context, albumsNode *importer.Object, album picago.Album) (ret error) {
 	if album.ID == "" {
 		return errors.New("album has no ID")
 	}
@@ -260,7 +366,7 @@ func (r *run) importAlbum(albumsNode *importer.Object, album picago.Album) (ret 
 	// return a slice of all photos. My "InstantUpload/Auto
 	// Backup" album has 6678 photos (and growing) and this
 	// currently takes like 40 seconds. Fix.
-	photos, err := picago.GetPhotos(ctxutil.Client(r), "default", album.ID)
+	photos, err := picago.GetPhotos(ctxutil.Client(ctx), "default", album.ID)
 	if err != nil {
 		return err
 	}
@@ -271,28 +377,28 @@ func (r *run) importAlbum(albumsNode *importer.Object, album picago.Album) (ret 
 	var grp syncutil.Group
 	for i := range photos {
 		select {
-		case <-r.Done():
-			return r.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		default:
 		}
 		photo := photos[i]
 		r.photoGate.Start()
 		grp.Go(func() error {
 			defer r.photoGate.Done()
-			return r.updatePhotoInAlbum(albumNode, photo)
+			return r.updatePhotoInAlbum(ctx, albumNode, photo)
 		})
 	}
 	return grp.Err()
 }
 
-func (r *run) updatePhotoInAlbum(albumNode *importer.Object, photo picago.Photo) (ret error) {
+func (r *run) updatePhotoInAlbum(ctx context.Context, albumNode *importer.Object, photo picago.Photo) (ret error) {
 	if photo.ID == "" {
 		return errors.New("photo has no ID")
 	}
 
 	getMediaBytes := func() (io.ReadCloser, error) {
 		log.Printf("Importing media from %v", photo.URL)
-		resp, err := ctxutil.Client(r).Get(photo.URL)
+		resp, err := ctxutil.Client(ctx).Get(photo.URL)
 		if err != nil {
 			return nil, fmt.Errorf("importing photo %s: %v", photo.ID, err)
 		}

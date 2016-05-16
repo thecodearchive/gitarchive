@@ -579,7 +579,7 @@ func (up *Uploader) uploadNodeRegularFile(n *node) (*client.PutResult, error) {
 				filebb.SetModTime(modtime)
 			}
 		}
-		if up.fileOpts.capCtime {
+		if up.fileOpts.wantCapCtime() {
 			filebb.CapCreationTime()
 		}
 	}
@@ -735,7 +735,7 @@ func (up *Uploader) uploadFilePermanode(sum string, fileRef blob.Ref, claimTime 
 			}(tag)
 		}
 
-		for _ = range tags {
+		for range tags {
 			if e := <-errch; e != nil && err == nil {
 				err = e
 			}

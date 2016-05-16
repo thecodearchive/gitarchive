@@ -53,8 +53,6 @@ type World struct {
 	server    *exec.Cmd
 	isRunning int32 // state of the camlistored server. Access with sync/atomic only.
 	serverErr error
-
-	cammount *os.Process
 }
 
 // CamliSourceRoot returns the root of the source tree, or an error.
@@ -120,8 +118,6 @@ func (w *World) Start() error {
 			"camtool",
 			"camlistored",
 		}
-		// TODO(mpl): investigate why we still rebuild camlistored everytime if run through devcam test.
-		// it looks like it's because we always resync the UI files and hence redo the embeds. Next CL.
 		var latestModtime time.Time
 		for _, target := range targs {
 			binPath := filepath.Join(w.camRoot, "bin", target)

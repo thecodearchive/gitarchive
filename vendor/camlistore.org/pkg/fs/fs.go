@@ -18,7 +18,7 @@ limitations under the License.
 
 // Package fs implements a FUSE filesystem for Camlistore and is
 // used by the cammount binary.
-package fs
+package fs // import "camlistore.org/pkg/fs"
 
 import (
 	"fmt"
@@ -26,7 +26,6 @@ import (
 	"log"
 	"os"
 	"sync"
-	"syscall"
 	"time"
 
 	"camlistore.org/pkg/blob"
@@ -34,13 +33,12 @@ import (
 	"camlistore.org/pkg/lru"
 	"camlistore.org/pkg/schema"
 
-	"camlistore.org/third_party/bazil.org/fuse"
-	fusefs "camlistore.org/third_party/bazil.org/fuse/fs"
+	"bazil.org/fuse"
+	fusefs "bazil.org/fuse/fs"
+	"golang.org/x/net/context"
 )
 
 var serverStart = time.Now()
-
-var errNotDir = fuse.Errno(syscall.ENOTDIR)
 
 type CamliFileSystem struct {
 	fetcher blob.Fetcher
@@ -100,7 +98,6 @@ func NewRootedCamliFileSystem(cli *client.Client, fetcher blob.Fetcher, root blo
 // node implements fuse.Node with a read-only Camli "file" or
 // "directory" blob.
 type node struct {
-	noXattr
 	fs      *CamliFileSystem
 	blobref blob.Ref
 
@@ -115,13 +112,14 @@ type node struct {
 	lookMap map[string]blob.Ref
 }
 
-func (n *node) Attr() (attr fuse.Attr) {
-	_, err := n.schema()
-	if err != nil {
-		// Hm, can't return it. Just log it I guess.
-		log.Printf("error fetching schema superset for %v: %v", n.blobref, err)
+var _ fusefs.Node = (*node)(nil)
+
+func (n *node) Attr(ctx context.Context, a *fuse.Attr) error {
+	if _, err := n.schema(); err != nil {
+		return err
 	}
-	return n.attr
+	*a = n.attr
+	return nil
 }
 
 func (n *node) addLookupEntry(name string, ref blob.Ref) {
@@ -133,7 +131,9 @@ func (n *node) addLookupEntry(name string, ref blob.Ref) {
 	n.lookMap[name] = ref
 }
 
-func (n *node) Lookup(name string, intr fusefs.Intr) (fusefs.Node, fuse.Error) {
+var _ fusefs.NodeStringLookuper = (*node)(nil)
+
+func (n *node) Lookup(ctx context.Context, name string) (fusefs.Node, error) {
 	if name == ".quitquitquit" {
 		// TODO: only in dev mode
 		log.Fatalf("Shutting down due to .quitquitquit lookup.")
@@ -145,7 +145,7 @@ func (n *node) Lookup(name string, intr fusefs.Intr) (fusefs.Node, fuse.Error) {
 	loaded := n.dirents != nil
 	n.dmu.Unlock()
 	if !loaded {
-		n.ReadDir(nil)
+		n.ReadDirAll(nil)
 	}
 
 	n.mu.Lock()
@@ -177,7 +177,9 @@ func isWriteFlags(flags fuse.OpenFlags) bool {
 	return flags&fuse.OpenFlags(os.O_WRONLY|os.O_RDWR|os.O_APPEND|os.O_CREATE) != 0
 }
 
-func (n *node) Open(req *fuse.OpenRequest, res *fuse.OpenResponse, intr fusefs.Intr) (fusefs.Handle, fuse.Error) {
+var _ fusefs.NodeOpener = (*node)(nil)
+
+func (n *node) Open(ctx context.Context, req *fuse.OpenRequest, res *fuse.OpenResponse) (fusefs.Handle, error) {
 	log.Printf("CAMLI Open on %v: %#v", n.blobref, req)
 	if isWriteFlags(req.Flags) {
 		return nil, fuse.EPERM
@@ -204,7 +206,9 @@ type nodeReader struct {
 	fr *schema.FileReader
 }
 
-func (nr *nodeReader) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr fusefs.Intr) fuse.Error {
+var _ fusefs.HandleReader = (*nodeReader)(nil)
+
+func (nr *nodeReader) Read(ctx context.Context, req *fuse.ReadRequest, res *fuse.ReadResponse) error {
 	log.Printf("CAMLI nodeReader READ on %v: %#v", nr.n.blobref, req)
 	if req.Offset >= nr.fr.Size() {
 		return nil
@@ -226,14 +230,18 @@ func (nr *nodeReader) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr f
 	return nil
 }
 
-func (nr *nodeReader) Release(req *fuse.ReleaseRequest, intr fusefs.Intr) fuse.Error {
+var _ fusefs.HandleReleaser = (*nodeReader)(nil)
+
+func (nr *nodeReader) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	log.Printf("CAMLI nodeReader RELEASE on %v", nr.n.blobref)
 	nr.fr.Close()
 	return nil
 }
 
-func (n *node) ReadDir(intr fusefs.Intr) ([]fuse.Dirent, fuse.Error) {
-	log.Printf("CAMLI ReadDir on %v", n.blobref)
+var _ fusefs.HandleReadDirAller = (*node)(nil)
+
+func (n *node) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	log.Printf("CAMLI ReadDirAll on %v", n.blobref)
 	n.dmu.Lock()
 	defer n.dmu.Unlock()
 	if n.dirents != nil {
@@ -242,17 +250,17 @@ func (n *node) ReadDir(intr fusefs.Intr) ([]fuse.Dirent, fuse.Error) {
 
 	ss, err := n.schema()
 	if err != nil {
-		log.Printf("camli.ReadDir error on %v: %v", n.blobref, err)
+		log.Printf("camli.ReadDirAll error on %v: %v", n.blobref, err)
 		return nil, fuse.EIO
 	}
 	dr, err := schema.NewDirReader(n.fs.fetcher, ss.BlobRef())
 	if err != nil {
-		log.Printf("camli.ReadDir error on %v: %v", n.blobref, err)
+		log.Printf("camli.ReadDirAll error on %v: %v", n.blobref, err)
 		return nil, fuse.EIO
 	}
 	schemaEnts, err := dr.Readdir(-1)
 	if err != nil {
-		log.Printf("camli.ReadDir error on %v: %v", n.blobref, err)
+		log.Printf("camli.ReadDirAll error on %v: %v", n.blobref, err)
 		return nil, fuse.EIO
 	}
 	n.dirents = make([]fuse.Dirent, 0)
@@ -305,11 +313,13 @@ func (n *node) populateAttr() error {
 	return nil
 }
 
-func (fs *CamliFileSystem) Root() (fusefs.Node, fuse.Error) {
+func (fs *CamliFileSystem) Root() (fusefs.Node, error) {
 	return fs.root, nil
 }
 
-func (fs *CamliFileSystem) Statfs(req *fuse.StatfsRequest, res *fuse.StatfsResponse, intr fusefs.Intr) fuse.Error {
+var _ fusefs.FSStatfser = (*CamliFileSystem)(nil)
+
+func (fs *CamliFileSystem) Statfs(ctx context.Context, req *fuse.StatfsRequest, res *fuse.StatfsResponse) error {
 	// Make some stuff up, just to see if it makes "lsof" happy.
 	res.Blocks = 1 << 35
 	res.Bfree = 1 << 34
@@ -369,31 +379,35 @@ func (fs *CamliFileSystem) newNodeFromBlobRef(root blob.Ref) (fusefs.Node, error
 	return nil, fmt.Errorf("Blobref must be of a directory or permanode got a %v", blob.Type())
 }
 
-type notImplementDirNode struct{ noXattr }
+type notImplementDirNode struct{}
 
-func (notImplementDirNode) Attr() fuse.Attr {
-	return fuse.Attr{
-		Mode: os.ModeDir | 0000,
-		Uid:  uint32(os.Getuid()),
-		Gid:  uint32(os.Getgid()),
-	}
+var _ fusefs.Node = (*notImplementDirNode)(nil)
+
+func (notImplementDirNode) Attr(ctx context.Context, a *fuse.Attr) error {
+	a.Mode = os.ModeDir | 0000
+	a.Uid = uint32(os.Getuid())
+	a.Gid = uint32(os.Getgid())
+	return nil
 }
 
 type staticFileNode string
 
-func (s staticFileNode) Attr() fuse.Attr {
-	return fuse.Attr{
-		Mode:   0400,
-		Uid:    uint32(os.Getuid()),
-		Gid:    uint32(os.Getgid()),
-		Size:   uint64(len(s)),
-		Mtime:  serverStart,
-		Ctime:  serverStart,
-		Crtime: serverStart,
-	}
+var _ fusefs.Node = (*notImplementDirNode)(nil)
+
+func (s staticFileNode) Attr(ctx context.Context, a *fuse.Attr) error {
+	a.Mode = 0400
+	a.Uid = uint32(os.Getuid())
+	a.Gid = uint32(os.Getgid())
+	a.Size = uint64(len(s))
+	a.Mtime = serverStart
+	a.Ctime = serverStart
+	a.Crtime = serverStart
+	return nil
 }
 
-func (s staticFileNode) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr fusefs.Intr) fuse.Error {
+var _ fusefs.HandleReader = (*staticFileNode)(nil)
+
+func (s staticFileNode) Read(ctx context.Context, req *fuse.ReadRequest, res *fuse.ReadResponse) error {
 	if req.Offset > int64(len(s)) {
 		return nil
 	}
@@ -405,20 +419,4 @@ func (s staticFileNode) Read(req *fuse.ReadRequest, res *fuse.ReadResponse, intr
 	res.Data = make([]byte, size)
 	copy(res.Data, s)
 	return nil
-}
-
-func (n staticFileNode) Getxattr(*fuse.GetxattrRequest, *fuse.GetxattrResponse, fusefs.Intr) fuse.Error {
-	return fuse.ENODATA
-}
-
-func (n staticFileNode) Listxattr(*fuse.ListxattrRequest, *fuse.ListxattrResponse, fusefs.Intr) fuse.Error {
-	return nil
-}
-
-func (n staticFileNode) Setxattr(*fuse.SetxattrRequest, fusefs.Intr) fuse.Error {
-	return fuse.EPERM
-}
-
-func (n staticFileNode) Removexattr(*fuse.RemovexattrRequest, fusefs.Intr) fuse.Error {
-	return fuse.EPERM
 }

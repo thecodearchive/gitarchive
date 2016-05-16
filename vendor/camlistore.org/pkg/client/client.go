@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 // Package client implements a Camlistore client.
-package client
+package client // import "camlistore.org/pkg/client"
 
 import (
 	"bytes"
@@ -47,6 +47,7 @@ import (
 	"camlistore.org/pkg/types/camtypes"
 
 	"go4.org/syncutil"
+	"golang.org/x/net/context"
 	"golang.org/x/net/http2"
 )
 
@@ -542,7 +543,8 @@ func (c *Client) GetPermanodesWithAttr(req *search.WithAttrRequest) (*search.Wit
 	return res, nil
 }
 
-func (c *Client) Describe(req *search.DescribeRequest) (*search.DescribeResponse, error) {
+func (c *Client) Describe(ctx context.Context, req *search.DescribeRequest) (*search.DescribeResponse, error) {
+	// TODO: use ctx (wait for Go 1.7?)
 	sr, err := c.SearchRoot()
 	if err != nil {
 		return nil, err
@@ -919,12 +921,6 @@ func (c *Client) doReqGated(req *http.Request) (*http.Response, error) {
 	c.httpGate.Start()
 	defer c.httpGate.Done()
 	return c.httpClient.Do(req)
-}
-
-// insecureTLS returns whether the client is using TLS without any
-// verification of the server's cert.
-func (c *Client) insecureTLS() bool {
-	return c.useTLS() && c.insecureAnyTLSCert
 }
 
 // DialFunc returns the adequate dial function when we're on android.

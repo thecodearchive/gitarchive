@@ -27,7 +27,7 @@ limitations under the License.
 // and configuration details, which are currently subject to change.
 //
 // WARNING: work in progress as of 2013-07-13.
-package encrypt
+package encrypt // import "camlistore.org/pkg/blobserver/encrypt"
 
 import (
 	"bufio"
@@ -230,9 +230,6 @@ func (s *storage) StatBlobs(dest chan<- blob.SizedRef, blobs []blob.Ref) error {
 		}
 		plainSize, ok := parseMetaValuePlainSize(v)
 		if !ok {
-			continue
-		}
-		if err != nil {
 			continue
 		}
 		dest <- blob.SizedRef{Ref: br, Size: plainSize}
@@ -472,7 +469,7 @@ func (s *storage) readAllMetaBlobs() error {
 		if err != nil {
 			close(stopEnumerate)
 			go func() {
-				for _ = range metac {
+				for range metac {
 				}
 			}()
 			// TODO: advertise in this error message a new option or environment variable

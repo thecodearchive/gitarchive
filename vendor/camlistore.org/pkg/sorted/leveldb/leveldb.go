@@ -17,7 +17,7 @@ limitations under the License.
 // Package leveldb provides an implementation of sorted.KeyValue
 // on top of a single mutable database file on disk using
 // github.com/syndtr/goleveldb.
-package leveldb
+package leveldb // import "camlistore.org/pkg/sorted/leveldb"
 
 import (
 	"errors"
@@ -29,11 +29,11 @@ import (
 	"camlistore.org/pkg/sorted"
 	"go4.org/jsonconfig"
 
-	"camlistore.org/third_party/github.com/syndtr/goleveldb/leveldb"
-	"camlistore.org/third_party/github.com/syndtr/goleveldb/leveldb/filter"
-	"camlistore.org/third_party/github.com/syndtr/goleveldb/leveldb/iterator"
-	"camlistore.org/third_party/github.com/syndtr/goleveldb/leveldb/opt"
-	"camlistore.org/third_party/github.com/syndtr/goleveldb/leveldb/util"
+	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/filter"
+	"github.com/syndtr/goleveldb/leveldb/iterator"
+	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 var _ sorted.Wiper = (*kvis)(nil)
@@ -91,7 +91,6 @@ type kvis struct {
 	opts      *opt.Options
 	readOpts  *opt.ReadOptions
 	writeOpts *opt.WriteOptions
-	txmu      sync.Mutex
 }
 
 func (is *kvis) Get(key string) (string, error) {
@@ -207,10 +206,8 @@ func (is *kvis) Close() error {
 type iter struct {
 	it iterator.Iterator
 
-	key, val   []byte
 	skey, sval *string // for caching string values
 
-	err    error
 	closed bool
 }
 

@@ -29,25 +29,26 @@ import (
 	"strings"
 	"time"
 
+	fontawesomestatic "embed/fontawesome"
+	glitchstatic "embed/glitch"
+	lessstatic "embed/less"
+	reactstatic "embed/react"
+
 	"camlistore.org/pkg/blob"
 	"camlistore.org/pkg/blobserver"
 	"camlistore.org/pkg/constants"
 	"camlistore.org/pkg/fileembed"
 	"camlistore.org/pkg/httputil"
 	"camlistore.org/pkg/misc/closure"
+	"camlistore.org/pkg/osutil"
 	"camlistore.org/pkg/search"
 	"camlistore.org/pkg/server/app"
 	"camlistore.org/pkg/sorted"
 	"camlistore.org/pkg/types/camtypes"
 	uistatic "camlistore.org/server/camlistored/ui"
 	closurestatic "camlistore.org/server/camlistored/ui/closure"
-	"camlistore.org/third_party/code.google.com/p/rsc/qr"
-	fontawesomestatic "camlistore.org/third_party/fontawesome"
-	glitchstatic "camlistore.org/third_party/glitch"
-	lessstatic "camlistore.org/third_party/less"
-	reactstatic "camlistore.org/third_party/react"
+	"code.google.com/p/rsc/qr"
 	"go4.org/jsonconfig"
-
 	"go4.org/syncutil"
 )
 
@@ -70,6 +71,8 @@ var (
 	glitchPattern      = regexp.MustCompile(`^glitch/(.+)$`)
 
 	disableThumbCache, _ = strconv.ParseBool(os.Getenv("CAMLI_DISABLE_THUMB_CACHE"))
+
+	vendorEmbed = filepath.Join("vendor", "embed")
 )
 
 // UIHandler handles serving the UI and discovery JSON.
@@ -160,6 +163,14 @@ func uiFromConfig(ld blobserver.Loader, conf jsonconfig.Obj) (h http.Handler, er
 			log.Printf("Using the default \"%v\" as the sourceRoot for AppEngine", uistatic.GaeSourceRoot)
 			ui.sourceRoot = uistatic.GaeSourceRoot
 		}
+		if ui.sourceRoot == "" && uistatic.Files.IsEmpty() {
+			ui.sourceRoot, err = osutil.GoPackagePath("camlistore.org")
+			if err != nil {
+				log.Printf("Warning: server not compiled with linked-in UI resources (HTML, JS, CSS), and camlistore.org not found in GOPATH.")
+			} else {
+				log.Printf("Using UI resources (HTML, JS, CSS) from disk, under %v", ui.sourceRoot)
+			}
+		}
 	}
 	if ui.sourceRoot != "" {
 		ui.uiDir = filepath.Join(ui.sourceRoot, filepath.FromSlash("server/camlistored/ui"))
@@ -183,19 +194,19 @@ func uiFromConfig(ld blobserver.Loader, conf jsonconfig.Obj) (h http.Handler, er
 	}
 
 	if ui.sourceRoot != "" {
-		ui.fileReactHandler, err = makeFileServer(ui.sourceRoot, filepath.Join("third_party", "react"), "react.js")
+		ui.fileReactHandler, err = makeFileServer(ui.sourceRoot, filepath.Join(vendorEmbed, "react"), "react.js")
 		if err != nil {
 			return nil, fmt.Errorf("Could not make react handler: %s", err)
 		}
-		ui.fileGlitchHandler, err = makeFileServer(ui.sourceRoot, filepath.Join("third_party", "glitch"), "npc_piggy__x1_walk_png_1354829432.png")
+		ui.fileGlitchHandler, err = makeFileServer(ui.sourceRoot, filepath.Join(vendorEmbed, "glitch"), "npc_piggy__x1_walk_png_1354829432.png")
 		if err != nil {
 			return nil, fmt.Errorf("Could not make glitch handler: %s", err)
 		}
-		ui.fileFontawesomeHandler, err = makeFileServer(ui.sourceRoot, filepath.Join("third_party", "fontawesome"), "css/font-awesome.css")
+		ui.fileFontawesomeHandler, err = makeFileServer(ui.sourceRoot, filepath.Join(vendorEmbed, "fontawesome"), "css/font-awesome.css")
 		if err != nil {
 			return nil, fmt.Errorf("Could not make fontawesome handler: %s", err)
 		}
-		ui.fileLessHandler, err = makeFileServer(ui.sourceRoot, filepath.Join("third_party", "less"), "less.js")
+		ui.fileLessHandler, err = makeFileServer(ui.sourceRoot, filepath.Join(vendorEmbed, "less"), "less.js")
 		if err != nil {
 			return nil, fmt.Errorf("Could not make less handler: %s", err)
 		}
@@ -325,7 +336,7 @@ func makeClosureHandler(root, handlerName string) (http.Handler, error) {
 		return closureRedirector(root), nil
 	}
 
-	path := filepath.Join("third_party", "closure", "lib", "closure")
+	path := filepath.Join(vendorEmbed, "closure", "lib", "closure")
 	return makeFileServer(root, path, filepath.Join("goog", "base.js"))
 }
 
@@ -386,10 +397,6 @@ func wantsBlobInfo(req *http.Request) bool {
 	return httputil.IsGet(req) && blob.ValidRefString(req.FormValue("b"))
 }
 
-func wantsFileTreePage(req *http.Request) bool {
-	return httputil.IsGet(req) && blob.ValidRefString(req.FormValue("d"))
-}
-
 func getSuffixMatches(req *http.Request, pattern *regexp.Regexp) bool {
 	if httputil.IsGet(req) {
 		suffix := httputil.PathSuffix(req)
@@ -437,8 +444,6 @@ func (ui *UIHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				file = "permanode.html"
 			case wantsBlobInfo(req):
 				file = "blobinfo.html"
-			case wantsFileTreePage(req):
-				file = "filetree.html"
 			case req.URL.Path == httputil.PathBase(req):
 				file = "index.html"
 			default:

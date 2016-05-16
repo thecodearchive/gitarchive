@@ -27,8 +27,8 @@ import (
 	"camlistore.org/pkg/blob"
 	"camlistore.org/pkg/schema"
 	"camlistore.org/pkg/search"
-	"camlistore.org/third_party/bazil.org/fuse"
-	"camlistore.org/third_party/bazil.org/fuse/fs"
+
+	"bazil.org/fuse"
 )
 
 // xattrPrefix is the permanode attribute prefix used for record
@@ -73,7 +73,7 @@ func (x *xattr) load(p *search.DescribedPermanode) {
 	}
 }
 
-func (x *xattr) set(req *fuse.SetxattrRequest) fuse.Error {
+func (x *xattr) set(req *fuse.SetxattrRequest) error {
 	log.Printf("%s.setxattr(%q) -> %q", x.typeName, req.Name, req.Xattr)
 
 	claim := schema.NewSetAttributeClaim(x.permanode, xattrPrefix+req.Name,
@@ -93,7 +93,7 @@ func (x *xattr) set(req *fuse.SetxattrRequest) fuse.Error {
 	return nil
 }
 
-func (x *xattr) remove(req *fuse.RemovexattrRequest) fuse.Error {
+func (x *xattr) remove(req *fuse.RemovexattrRequest) error {
 	log.Printf("%s.Removexattr(%q)", x.typeName, req.Name)
 
 	claim := schema.NewDelAttributeClaim(x.permanode, xattrPrefix+req.Name, "")
@@ -111,14 +111,14 @@ func (x *xattr) remove(req *fuse.RemovexattrRequest) fuse.Error {
 	return nil
 }
 
-func (x *xattr) get(req *fuse.GetxattrRequest, res *fuse.GetxattrResponse) fuse.Error {
+func (x *xattr) get(req *fuse.GetxattrRequest, res *fuse.GetxattrResponse) error {
 	x.mu.Lock()
 	defer x.mu.Unlock()
 
 	val, found := (*x.xattrs)[req.Name]
 
 	if !found {
-		return fuse.ENODATA
+		return fuse.ErrNoXattr
 	}
 
 	res.Xattr = val
@@ -126,7 +126,7 @@ func (x *xattr) get(req *fuse.GetxattrRequest, res *fuse.GetxattrResponse) fuse.
 	return nil
 }
 
-func (x *xattr) list(req *fuse.ListxattrRequest, res *fuse.ListxattrResponse) fuse.Error {
+func (x *xattr) list(req *fuse.ListxattrRequest, res *fuse.ListxattrResponse) error {
 	x.mu.Lock()
 	defer x.mu.Unlock()
 
@@ -135,28 +135,4 @@ func (x *xattr) list(req *fuse.ListxattrRequest, res *fuse.ListxattrResponse) fu
 		res.Xattr = append(res.Xattr, '\x00')
 	}
 	return nil
-}
-
-// noXattr provides default xattr methods for fuse nodes.  The fuse
-// package itself defaults to ENOSYS which causes some systems (read:
-// MacOSX) to assume that no extended attribute support is available
-// anywhere in the filesystem.  This different set of defaults just
-// returns no values for read requests and permission denied for write
-// requests.
-type noXattr struct{}
-
-func (n noXattr) Getxattr(*fuse.GetxattrRequest, *fuse.GetxattrResponse, fs.Intr) fuse.Error {
-	return fuse.ENODATA
-}
-
-func (n noXattr) Listxattr(*fuse.ListxattrRequest, *fuse.ListxattrResponse, fs.Intr) fuse.Error {
-	return nil
-}
-
-func (n noXattr) Setxattr(*fuse.SetxattrRequest, fs.Intr) fuse.Error {
-	return fuse.EPERM
-}
-
-func (n noXattr) Removexattr(*fuse.RemovexattrRequest, fs.Intr) fuse.Error {
-	return fuse.EPERM
 }

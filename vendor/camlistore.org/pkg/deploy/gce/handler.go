@@ -45,7 +45,7 @@ import (
 	"camlistore.org/pkg/sorted"
 	"camlistore.org/pkg/sorted/leveldb"
 
-	"camlistore.org/third_party/code.google.com/p/xsrftoken"
+	"code.google.com/p/xsrftoken"
 
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
@@ -54,11 +54,7 @@ import (
 	"google.golang.org/cloud/compute/metadata"
 )
 
-const (
-	// duration after which a progress state is dropped from the progress map
-	progressStateExpiration = 7 * 24 * time.Hour
-	cookieExpiration        = 24 * time.Hour
-)
+const cookieExpiration = 24 * time.Hour
 
 var (
 	helpGenCert      = `A self-signed HTTPS certificate will be generated for the chosen domain name (or for "localhost" if left blank) and set as the default. You will be able to set another HTTPS certificate for Camlistore afterwards.`
@@ -558,8 +554,7 @@ func (h *DeployHandler) serveInstanceState(w http.ResponseWriter, r *http.Reques
 	}
 	if state.Err != "" {
 		// No need to log that error here since we're already doing it in serveCallback
-		// TODO(mpl): fix overescaping of double quotes.
-		h.serveErrorPage(w, fmt.Errorf("An error occurred while creating your instance: %q. ", state.Err))
+		h.serveErrorPage(w, fmt.Errorf("An error occurred while creating your instance: %v.", state.Err))
 		return
 	}
 	if state.Success || state.Exists {

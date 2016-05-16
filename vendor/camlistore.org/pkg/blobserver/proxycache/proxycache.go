@@ -31,7 +31,7 @@ Example config:
           }
       },
 */
-package proxycache
+package proxycache // import "camlistore.org/pkg/blobserver/proxycache"
 
 import (
 	"bytes"
@@ -49,8 +49,6 @@ import (
 	"go4.org/jsonconfig"
 	"golang.org/x/net/context"
 )
-
-const buffered = 8
 
 type sto struct {
 	origin        blobserver.Storage
@@ -185,11 +183,3 @@ func (sto *sto) EnumerateBlobs(ctx context.Context, dest chan<- blob.SizedRef, a
 
 // TODO:
 //var _ blobserver.Generationer = (*sto)(nil)
-
-func (sto *sto) x_ResetStorageGeneration() error {
-	panic("TODO")
-}
-
-func (sto *sto) x_StorageGeneration() (initTime time.Time, random string, err error) {
-	panic("TODO")
-}

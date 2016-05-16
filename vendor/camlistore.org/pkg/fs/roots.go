@@ -25,19 +25,18 @@ import (
 	"sync"
 	"time"
 
+	"bazil.org/fuse"
+	"bazil.org/fuse/fs"
 	"camlistore.org/pkg/blob"
 	"camlistore.org/pkg/schema"
 	"camlistore.org/pkg/search"
-	"camlistore.org/third_party/bazil.org/fuse"
-	"camlistore.org/third_party/bazil.org/fuse/fs"
-
 	"go4.org/syncutil"
+	"golang.org/x/net/context"
 )
 
 const refreshTime = 1 * time.Minute
 
 type rootsDir struct {
-	noXattr
 	fs *CamliFileSystem
 	at time.Time
 
@@ -46,6 +45,15 @@ type rootsDir struct {
 	m         map[string]blob.Ref // ent name => permanode
 	children  map[string]fs.Node  // ent name => child node
 }
+
+var (
+	_ fs.Node               = (*rootsDir)(nil)
+	_ fs.HandleReadDirAller = (*rootsDir)(nil)
+	_ fs.NodeRemover        = (*rootsDir)(nil)
+	_ fs.NodeRenamer        = (*rootsDir)(nil)
+	_ fs.NodeStringLookuper = (*rootsDir)(nil)
+	_ fs.NodeMkdirer        = (*rootsDir)(nil)
+)
 
 func (n *rootsDir) isRO() bool {
 	return !n.at.IsZero()
@@ -58,36 +66,35 @@ func (n *rootsDir) dirMode() os.FileMode {
 	return 0700
 }
 
-func (n *rootsDir) Attr() fuse.Attr {
-	return fuse.Attr{
-		Mode: os.ModeDir | n.dirMode(),
-		Uid:  uint32(os.Getuid()),
-		Gid:  uint32(os.Getgid()),
-	}
+func (n *rootsDir) Attr(ctx context.Context, a *fuse.Attr) error {
+	a.Mode = os.ModeDir | n.dirMode()
+	a.Uid = uint32(os.Getuid())
+	a.Gid = uint32(os.Getgid())
+	return nil
 }
 
-func (n *rootsDir) ReadDir(intr fs.Intr) ([]fuse.Dirent, fuse.Error) {
+func (n *rootsDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if err := n.condRefresh(); err != nil {
+	if err := n.condRefresh(ctx); err != nil {
 		return nil, fuse.EIO
 	}
 	var ents []fuse.Dirent
 	for name := range n.m {
 		ents = append(ents, fuse.Dirent{Name: name})
 	}
-	log.Printf("rootsDir.ReadDir() -> %v", ents)
+	log.Printf("rootsDir.ReadDirAll() -> %v", ents)
 	return ents, nil
 }
 
-func (n *rootsDir) Remove(req *fuse.RemoveRequest, intr fs.Intr) fuse.Error {
+func (n *rootsDir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	if n.isRO() {
 		return fuse.EPERM
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	if err := n.condRefresh(); err != nil {
+	if err := n.condRefresh(ctx); err != nil {
 		return err
 	}
 	br := n.m[req.Name]
@@ -108,7 +115,7 @@ func (n *rootsDir) Remove(req *fuse.RemoveRequest, intr fs.Intr) fuse.Error {
 	return nil
 }
 
-func (n *rootsDir) Rename(req *fuse.RenameRequest, newDir fs.Node, intr fs.Intr) fuse.Error {
+func (n *rootsDir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
 	log.Printf("rootsDir.Rename %q -> %q", req.OldName, req.NewName)
 	if n.isRO() {
 		return fuse.EPERM
@@ -130,7 +137,7 @@ func (n *rootsDir) Rename(req *fuse.RenameRequest, newDir fs.Node, intr fs.Intr)
 	// Don't allow renames if the root contains content.  Rename
 	// is mostly implemented to make GUIs that create directories
 	// before asking for the directory name.
-	res, err := n.fs.client.Describe(&search.DescribeRequest{BlobRef: target})
+	res, err := n.fs.client.Describe(ctx, &search.DescribeRequest{BlobRef: target})
 	if err != nil {
 		log.Println("rootsDir.Rename:", err)
 		return fuse.EIO
@@ -174,11 +181,11 @@ func (n *rootsDir) Rename(req *fuse.RenameRequest, newDir fs.Node, intr fs.Intr)
 	return nil
 }
 
-func (n *rootsDir) Lookup(name string, intr fs.Intr) (fs.Node, fuse.Error) {
+func (n *rootsDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	log.Printf("fs.roots: Lookup(%q)", name)
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if err := n.condRefresh(); err != nil {
+	if err := n.condRefresh(ctx); err != nil {
 		return nil, err
 	}
 	br := n.m[name]
@@ -207,7 +214,7 @@ func (n *rootsDir) Lookup(name string, intr fs.Intr) (fs.Node, fuse.Error) {
 }
 
 // requires n.mu is held
-func (n *rootsDir) condRefresh() fuse.Error {
+func (n *rootsDir) condRefresh(ctx context.Context) error {
 	if n.lastQuery.After(time.Now().Add(-refreshTime)) {
 		return nil
 	}
@@ -224,7 +231,7 @@ func (n *rootsDir) condRefresh() fuse.Error {
 		return
 	})
 	if err := grp.Err(); err != nil {
-		log.Printf("fs.recent: GetRecentPermanodes error in ReadDir: %v", err)
+		log.Printf("fs.roots: error refreshing permanodes: %v", err)
 		return fuse.EIO
 	}
 
@@ -246,7 +253,7 @@ func (n *rootsDir) condRefresh() fuse.Error {
 		return nil
 	}
 
-	dres, err := n.fs.client.Describe(dr)
+	dres, err := n.fs.client.Describe(ctx, dr)
 	if err != nil {
 		log.Printf("Describe failure: %v", err)
 		return fuse.EIO
@@ -292,7 +299,7 @@ func (n *rootsDir) condRefresh() fuse.Error {
 	return nil
 }
 
-func (n *rootsDir) Mkdir(req *fuse.MkdirRequest, intr fs.Intr) (fs.Node, fuse.Error) {
+func (n *rootsDir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
 	if n.isRO() {
 		return nil, fuse.EPERM
 	}
