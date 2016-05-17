@@ -54,7 +54,7 @@ spec:
           - name: GRAFANA_PORT
             value: "3000"
         volumeMounts:
-        - mountPath: /var
+        - mountPath: /var/lib/grafana
           name: grafana-storage
       volumes:
         - name: grafana-storage
