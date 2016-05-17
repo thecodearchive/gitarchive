@@ -28,6 +28,9 @@ func main() {
 	fatalIfErr(err)
 	defer func() {
 		log.Println("[ ] Closing cache...")
+		if err := db.Sync(); err != nil {
+			log.Println(err)
+		}
 		if err := db.Close(); err != nil {
 			log.Println(err)
 		}
@@ -81,6 +84,10 @@ func main() {
 
 	st := github.NewStarTracker(db, MustGetenv("GITHUB_TOKEN"))
 	exp.Set("github", st.Expvar())
+
+	// Set NoSync since we don't care about losing data since the last sync,
+	// which we manually do when making a checkpoint.
+	db.NoSync = true
 
 	d := &Drinker{
 		q: q, st: st, u: u,
@@ -139,6 +146,10 @@ func main() {
 			return b.Put([]byte("_resume"), []byte(t.Format(github.HourFormat)))
 		}); err != nil {
 			log.Println("[-] Failed to save checkpoint:", err)
+			break
+		}
+		if err := db.Sync(); err != nil {
+			log.Println("[-] Failed to sync the database:", err)
 			break
 		}
 	}

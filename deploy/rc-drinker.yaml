@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: drinker
-        image: gcr.io/code-archive/drinker:v13
+        image: gcr.io/code-archive/drinker:v14
         volumeMounts:
         - name: camli-secring
           mountPath: /data/secring
