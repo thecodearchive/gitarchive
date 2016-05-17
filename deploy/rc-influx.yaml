@@ -2,7 +2,6 @@ apiVersion: v1
 kind: ReplicationController
 metadata:
   name: influx-grafana
-  namespace: kube-system
 spec:
   replicas: 1
   template:
@@ -21,12 +20,23 @@ spec:
         - name: influx-storage
           mountPath: /data
         resources:
-          requests:
-            cpu: "100m"
+          # keep request = limit to keep this container in guaranteed class
           limits:
-            cpu: "200m"
+            cpu: 100m
+            memory: 500Mi
+          requests:
+            cpu: 100m
+            memory: 500Mi
       - name: grafana
-        image: kubernetes/heapster_grafana:v2.1.0
+        image: gcr.io/google_containers/heapster_grafana:v2.6.0-2
+        resources:
+          # keep request = limit to keep this container in guaranteed class
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
         env:
           - name: INFLUXDB_SERVICE_URL
             value: http://influx:8086
@@ -37,7 +47,12 @@ spec:
           - name: GF_AUTH_ANONYMOUS_ORG_ROLE
             value: Admin
           - name: GF_SERVER_ROOT_URL
-            value: /api/v1/proxy/namespaces/kube-system/services/graf/
+            value: /api/v1/proxy/namespaces/default/services/grafana/
+          # So, VERY HELPFULLY, K8s will set GRAFANA_PORT if a "grafana" service exists.
+          # SMARTLY, gcr.io/google_containers/heapster_grafana uses GRAFANA_PORT to set the port.
+          # So yeah. Took me a while to figure out why it was listening to http://0.0.0.0:tcp://10.7.243.177:80/
+          - name: GRAFANA_PORT
+            value: "3000"
         volumeMounts:
         - mountPath: /var
           name: grafana-storage

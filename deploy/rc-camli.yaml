@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: camli
-        image: gcr.io/code-archive/camlistored
+        image: gcr.io/code-archive/camlistored:v2
         ports:
         - containerPort: 3179
         volumeMounts:
@@ -20,6 +20,8 @@ spec:
           mountPath: /data/secring
           readOnly: true
         env:
+        - name: CAMLI_HTTP_PPROF
+          value: "true"
         - name: CAMLI_CONFENV_GCS
           valueFrom:
             secretKeyRef:

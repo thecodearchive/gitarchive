@@ -23,7 +23,7 @@ spec:
         - name: RESUME_PATH
           value: "/cache/resume"
         - name: INFLUX_ADDR
-          value: "http://influx.kube-system.svc.cluster.local:8086"
+          value: "http://influx:8086"
         - name: QUEUE_ADDR
           value: "root:toor@tcp(queue:3306)/gitarchive"
         - name: CACHE_PATH
