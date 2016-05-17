@@ -1,21 +1,18 @@
 package github
 
 import (
-	"encoding/json"
 	"errors"
 	"expvar"
-	"io"
 	"strings"
 	"time"
 
-	"github.com/thecodearchive/gitarchive/lru"
-
+	"github.com/boltdb/bolt"
 	"github.com/google/go-github/github"
 	"golang.org/x/oauth2"
 )
 
-// StarTracker keeps track of how many stars a repository has. It keeps a huge
-// in-memory LRU, goes to GitHub for never-seen-before, and it assumes it will
+// StarTracker keeps track of how many stars a repository has. It is backed by a
+// db on disk, goes to GitHub for never-seen-before, and it assumes it will
 // be told about every WatchEvent ever since so that it can keep the number
 // accurate without ever going to the network again.
 //
@@ -23,8 +20,8 @@ import (
 // it assumes WatchEvents and Gets are submited sequentially anyway. However, it
 // is fully idempotent.
 type StarTracker struct {
-	lru *lru.Cache
-	gh  *github.Client
+	db *bolt.DB
+	gh *github.Client
 
 	exp          *expvar.Map
 	expRateLeft  *expvar.Int
@@ -33,19 +30,27 @@ type StarTracker struct {
 	panicIfNetwork bool // used for testing
 }
 
-type repo struct {
+//go:generate msgp -io=false -tests=false -unexported
+//msgp:ignore StarTracker
+
+type Repo struct {
 	Stars       int
 	Parent      string
 	LastUpdated time.Time
 }
 
-func NewStarTracker(maxSize int, gitHubToken string) *StarTracker {
+func NewStarTracker(db *bolt.DB, gitHubToken string) *StarTracker {
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: gitHubToken},
 	)
 	tc := oauth2.NewClient(oauth2.NoContext, ts)
 
-	s := &StarTracker{lru: lru.New(maxSize), gh: github.NewClient(tc)}
+	db.Update(func(tx *bolt.Tx) error {
+		tx.CreateBucketIfNotExists([]byte("StarTracker"))
+		return nil
+	})
+
+	s := &StarTracker{db: db, gh: github.NewClient(tc)}
 	s.gh.UserAgent = "github.com/thecodearchive/gitarchive/github StarTracker"
 
 	s.exp = new(expvar.Map).Init()
@@ -53,17 +58,51 @@ func NewStarTracker(maxSize int, gitHubToken string) *StarTracker {
 	s.expRateReset = new(expvar.String)
 	s.exp.Set("rateleft", s.expRateLeft)
 	s.exp.Set("ratereset", s.expRateReset)
-	s.exp.Set("cachesize", expvar.Func(func() interface{} { return s.lru.Len() }))
+	s.exp.Set("cachesize", expvar.Func(func() interface{} {
+		var n int
+		s.db.View(func(tx *bolt.Tx) error {
+			n = tx.Bucket([]byte("StarTracker")).Stats().KeyN
+			return nil
+		})
+		return n
+	}))
 
 	return s
 }
 
+func (s *StarTracker) getRepo(key string) (r *Repo, err error) {
+	err = s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("StarTracker"))
+		v := b.Get([]byte(key))
+		if v == nil {
+			return nil
+		}
+		r = &Repo{}
+		_, err := r.UnmarshalMsg(v)
+		return err
+	})
+	return
+}
+
+func (s *StarTracker) setRepo(key string, r *Repo) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("StarTracker"))
+		v, err := r.MarshalMsg(nil)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(key), v)
+	})
+}
+
 func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
-	res, ok := s.lru.Get(name)
-	if ok {
+	rr, err := s.getRepo(name)
+	if err != nil {
+		return 0, "", err
+	}
+	if rr != nil {
 		s.exp.Add("cachehits", 1)
-		repo := res.(*repo)
-		return repo.Stars, repo.Parent, nil
+		return rr.Stars, rr.Parent, nil
 	}
 
 	if s.panicIfNetwork {
@@ -91,32 +130,34 @@ func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 		parent = *r.Parent.FullName
 	}
 
-	s.lru.Add(name, &repo{
+	return *r.StargazersCount, parent, s.setRepo(name, &Repo{
 		Stars:       *r.StargazersCount,
 		LastUpdated: t,
 		Parent:      parent,
 	})
-	return *r.StargazersCount, parent, nil
 }
 
-func (s *StarTracker) WatchEvent(name string, created time.Time) {
-	res, ok := s.lru.Get(name)
-	if !ok {
-		return
+func (s *StarTracker) WatchEvent(name string, created time.Time) error {
+	repo, err := s.getRepo(name)
+	if err != nil {
+		return err
+	}
+	if repo == nil {
+		return nil
 	}
 
-	repo := res.(*repo)
 	if created.After(repo.LastUpdated) {
 		repo.Stars += 1
 		repo.LastUpdated = created
 	}
+	return s.setRepo(name, repo)
 }
 
-func (s *StarTracker) CreateEvent(name, parent string, created time.Time) {
-	if _, ok := s.lru.Get(name); ok {
-		return // maintain idempotency
+func (s *StarTracker) CreateEvent(name, parent string, created time.Time) error {
+	if repo, err := s.getRepo(name); err != nil || repo != nil {
+		return err // maintain idempotency
 	}
-	s.lru.Add(name, &repo{
+	return s.setRepo(name, &Repo{
 		Stars:       0,
 		LastUpdated: created,
 		Parent:      parent,
@@ -131,19 +172,6 @@ func (s *StarTracker) trackRate() {
 	rate := s.gh.Rate()
 	s.expRateLeft.Set(int64(rate.Remaining))
 	s.expRateReset.Set(rate.Reset.String())
-}
-
-func (s *StarTracker) SaveCache(w io.Writer) error {
-	return s.lru.Save(w)
-}
-
-func (s *StarTracker) LoadCache(r io.Reader) (err error) {
-	s.lru, err = lru.Load(r, func(e json.RawMessage) (interface{}, error) {
-		var r repo
-		err := json.Unmarshal(e, &r)
-		return &r, err
-	}, s.lru.MaxEntries)
-	return
 }
 
 func Is404(err error) bool {

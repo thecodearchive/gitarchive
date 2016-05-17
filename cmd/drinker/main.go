@@ -3,7 +3,6 @@ package main
 import (
 	"expvar"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -13,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/boltdb/bolt"
 	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/github"
 	"github.com/thecodearchive/gitarchive/metrics"
@@ -24,15 +24,32 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
+	db, err := bolt.Open(MustGetenv("CACHE_PATH"), 0600, &bolt.Options{Timeout: 1 * time.Second})
+	fatalIfErr(err)
+	defer func() {
+		log.Println("[ ] Closing cache...")
+		if err := db.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	var t time.Time
-	resume, err := ioutil.ReadFile(MustGetenv("RESUME_PATH"))
-	if os.IsNotExist(err) {
+	fatalIfErr(db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("gitarchive"))
+		if b == nil {
+			return nil
+		}
+		v := b.Get([]byte("_resume"))
+		if v == nil {
+			return nil
+		}
+		t, err = time.Parse(github.HourFormat, string(v))
+		return err
+	}))
+	if t.IsZero() {
 		t = time.Now().Truncate(time.Hour).Add(-12 * time.Hour)
 		log.Println("[ ] Can't load resume file, starting 12 hours ago")
 	} else {
-		fatalIfErr(err)
-		t, err = time.Parse(github.HourFormat, string(resume))
-		fatalIfErr(err)
 		log.Printf("[+] Resuming from %s", t.Format(github.HourFormat))
 	}
 
@@ -57,29 +74,13 @@ func main() {
 	fatalIfErr(err)
 	defer func() {
 		log.Println("[ ] Closing queue...")
-		fatalIfErr(q.Close())
+		if err := q.Close(); err != nil {
+			log.Println(err)
+		}
 	}()
 
-	st := github.NewStarTracker(10000000, MustGetenv("GITHUB_TOKEN"))
+	st := github.NewStarTracker(db, MustGetenv("GITHUB_TOKEN"))
 	exp.Set("github", st.Expvar())
-	if f, err := os.Open(MustGetenv("CACHE_PATH")); err != nil {
-		log.Println("[ ] Can't load StarTracker cache, starting empty")
-	} else {
-		fatalIfErr(st.LoadCache(f))
-		f.Close()
-		log.Println("[+] Loaded StarTracker cache")
-	}
-	defer func() {
-		f, err := os.Create(MustGetenv("CACHE_PATH") + ".tmp")
-		fatalIfErr(err)
-		log.Println("[ ] Writing StarTracker cache...")
-		fatalIfErr(st.SaveCache(f))
-		fatalIfErr(f.Close())
-		fatalIfErr(os.Rename(MustGetenv("CACHE_PATH")+".tmp", MustGetenv("CACHE_PATH")))
-		fatalIfErr(ioutil.WriteFile(MustGetenv("RESUME_PATH"),
-			[]byte(t.Format(github.HourFormat)), 0664))
-		log.Println("[+] Saved cache and resume point successfully.")
-	}()
 
 	d := &Drinker{
 		q: q, st: st, u: u,
@@ -105,7 +106,10 @@ func main() {
 		}
 		log.Printf("[ ] Opening %s archive download...", t.Format(github.HourFormat))
 		a, err := github.DownloadArchive(t)
-		fatalIfErr(err) // TODO: make more graceful
+		if err != nil {
+			log.Println("[-] Failed to download archive:", err)
+			break
+		}
 		if a == nil {
 			exp.Add("archives404", 1)
 			startTime = time.Now().Add(2 * time.Minute)
@@ -118,11 +122,25 @@ func main() {
 		if err == StoppedError {
 			break
 		}
-		fatalIfErr(err) // TODO: make more graceful
+		if err != nil {
+			log.Println("[-] Failed to drink archive:", err)
+			break
+		}
 
 		exp.Add("archivesfinished", 1)
 		t = t.Add(time.Hour)
 		startTime = t.Add(time.Hour).Add(2 * time.Minute)
+
+		if err := db.Update(func(tx *bolt.Tx) error {
+			b, err := tx.CreateBucketIfNotExists([]byte("gitarchive"))
+			if err != nil {
+				return err
+			}
+			return b.Put([]byte("_resume"), []byte(t.Format(github.HourFormat)))
+		}); err != nil {
+			log.Println("[-] Failed to save checkpoint:", err)
+			break
+		}
 	}
 
 	log.Println("[+] Processed events until", expLatest)
@@ -131,14 +149,14 @@ func main() {
 
 func fatalIfErr(err error) {
 	if err != nil {
-		log.Panic(err) // panic to let the defer run
+		log.Fatal(err)
 	}
 }
 
 func MustGetenv(name string) string {
 	val := os.Getenv(name)
 	if val == "" {
-		log.Panicln("Missing environment variable:", name)
+		log.Fatalln("Missing environment variable:", name)
 	}
 	return val
 }
