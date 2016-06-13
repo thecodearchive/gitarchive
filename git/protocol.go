@@ -7,8 +7,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-
-	"github.com/thecodearchive/gitarchive/camli"
 )
 
 var GitParseError = errors.New("failed parsing the git protocol")
@@ -79,17 +77,6 @@ func ParseSmartResponse(body io.Reader) (refs map[string]string, err error) {
 	}
 }
 
-func ParseUploadPackResponse(body io.Reader, uploader *camli.Uploader,
-	msgW io.Writer, counter *expvar.Int) (string, int64, error) {
-	r := &sideBandReader{Upstream: body, MsgW: msgW}
-	cr := &countingReader{Upstream: r, Counter: counter}
-	ref, err := uploader.PutObject(cr)
-	if r.Errors != nil {
-		err = fmt.Errorf("remote error: %s", r.Errors)
-	}
-	return ref, cr.BytesRead, err
-}
-
 type sideBandReader struct {
 	Upstream io.Reader
 	buffer   []byte
@@ -140,7 +127,7 @@ func (s *sideBandReader) Read(p []byte) (n int, err error) {
 		case 2:
 			s.MsgW.Write(pkt[1:]) // ignoring the error, it's just messages
 		case 3:
-			s.Errors = append(s.Errors, pkt[1:]...)
+			return 0, fmt.Errorf("remote error: %s", pkt[1:])
 		}
 	}
 }

@@ -3,12 +3,16 @@ package main
 import (
 	"expvar"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"golang.org/x/net/context"
+	"google.golang.org/cloud/storage"
 
 	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/git"
@@ -18,7 +22,7 @@ import (
 
 type Fetcher struct {
 	q        *queue.Queue
-	u        *camli.Uploader
+	bucket   *storage.BucketHandle
 	schedule *weekmap.WeekMap
 
 	exp *expvar.Map
@@ -57,7 +61,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	f.exp.Add("fetches", 1)
 
 	url := "https://github.com/" + name + ".git"
-	repo, err := f.u.GetRepo(url)
+	repo, err := &camli.Repo{}, error(nil) // f.u.GetRepo(url)
 	if err != nil {
 		return err
 	}
@@ -78,8 +82,8 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	// Smaller and faster fetches, but possibly a lot of waste in serving clones.
 	if parent != "" && repo == nil {
 		f.exp.Add("forks", 1)
-		mainURL := "https://github.com/" + parent + ".git"
-		mainRepo, err := f.u.GetRepo(mainURL)
+		//mainURL := "https://github.com/" + parent + ".git"
+		mainRepo, err := repo, error(nil) //f.u.GetRepo(mainURL) //TODO
 		if err != nil {
 			return err
 		}
@@ -100,26 +104,33 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	}
 	log.Printf("[+] %s %s%s...", logVerb, name, logFork)
 
+	packrefname := fmt.Sprintf("%s_%d", name, time.Now().Unix())
+	w := f.bucket.Object(packrefname).NewWriter(context.Background())
+
 	start := time.Now()
 	bw := f.exp.Get("fetchbytes").(*expvar.Int)
-	res, err := git.Fetch(url, haves, f.u, os.Stderr, bw)
+	refs, r, err := git.Fetch(url, haves, os.Stderr, bw)
 	if err != nil {
 		return err
 	}
+	bytesFetched, err := io.Copy(w, r)
+	if err != nil {
+		return err
+	}
+	w.Close()
 	f.exp.Add("fetchtime", int64(time.Since(start)))
 
-	if res.PackRef != "" {
-		packfiles = append(packfiles, res.PackRef)
-	} else {
-		f.exp.Add("emptypack", 1)
-	}
-	err = f.u.PutRepo(&camli.Repo{
+	//	f.exp.Add("emptypack", 1)
+	packfiles = append(packfiles, packrefname)
+
+	// TODO
+	/*err = f.u.PutRepo(&camli.Repo{
 		Name:      url,
 		Retrieved: time.Now(),
-		Refs:      res.Refs,
+		Refs:      refs,
 		Packfiles: packfiles,
-	})
-	log.Printf("[+] Got %d refs, %d bytes.", len(res.Refs), res.BytesFetched)
+	})*/
+	log.Printf("[+] Got %d refs, %d bytes.", len(refs), bytesFetched)
 	return err
 }
 

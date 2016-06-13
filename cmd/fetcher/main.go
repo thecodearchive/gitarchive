@@ -11,7 +11,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/thecodearchive/gitarchive/camli"
+	"golang.org/x/net/context"
+	"google.golang.org/cloud/storage"
+
 	"github.com/thecodearchive/gitarchive/metrics"
 	"github.com/thecodearchive/gitarchive/queue"
 	"github.com/thecodearchive/gitarchive/weekmap"
@@ -30,8 +32,10 @@ func main() {
 	err = metrics.StartInfluxExport(MustGetenv("INFLUX_ADDR"), "fetcher", exp)
 	fatalIfErr(err)
 
-	u, err := camli.NewUploader()
+	client, err := storage.NewClient(context.Background())
 	fatalIfErr(err)
+
+	bucket := client.Bucket(OptGetenv("FETCHER_BUCKET_NAME", "packfiles"))
 
 	qDriver := "sqlite3"
 	if strings.Index(MustGetenv("QUEUE_ADDR"), "@") != -1 {
@@ -49,7 +53,7 @@ func main() {
 		return res
 	}))
 
-	f := &Fetcher{exp: exp, q: q, u: u, schedule: schedule}
+	f := &Fetcher{exp: exp, q: q, bucket: bucket, schedule: schedule}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
@@ -74,6 +78,14 @@ func MustGetenv(name string) string {
 	val := os.Getenv(name)
 	if val == "" {
 		log.Panicln("Missing environment variable:", name)
+	}
+	return val
+}
+
+func OptGetenv(name, defaultVal string) string {
+	val := os.Getenv(name)
+	if val == "" {
+		return defaultVal
 	}
 	return val
 }

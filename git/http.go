@@ -8,36 +8,27 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-
-	"github.com/thecodearchive/gitarchive/camli"
 )
 
-type FetchResult struct {
-	Refs    map[string]string
-	PackRef string
-
-	BytesFetched int64
-}
-
-func Fetch(gitURL string, haves map[string]struct{}, uploader *camli.Uploader,
-	msgW io.Writer, bwCounter *expvar.Int) (*FetchResult, error) {
+func Fetch(gitURL string, haves map[string]struct{}, msgW io.Writer,
+	bwCounter *expvar.Int) (refs map[string]string, r io.Reader, err error) {
 
 	req, err := http.NewRequest("GET", gitURL+"/info/refs?service=git-upload-pack", nil)
 	if err != nil {
-		return nil, err
+		return
 	}
 	req.Header.Set("User-Agent", "github.com/thecodearchive/gitarchive/git")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("GET /info/refs: %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("GET /info/refs: %d", resp.StatusCode)
 	}
-	refs, err := ParseSmartResponse(resp.Body)
+	refs, err = ParseSmartResponse(resp.Body)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	for name := range refs {
@@ -55,12 +46,8 @@ func Fetch(gitURL string, haves map[string]struct{}, uploader *camli.Uploader,
 	}
 	sort.Strings(wants)
 
-	res := &FetchResult{
-		Refs: refs,
-	}
-
 	if len(wants) == 0 {
-		return res, nil
+		return
 	}
 
 	body := &bytes.Buffer{}
@@ -86,24 +73,24 @@ func Fetch(gitURL string, haves map[string]struct{}, uploader *camli.Uploader,
 
 	req, err = http.NewRequest("POST", gitURL+"/git-upload-pack", body)
 	if err != nil {
-		return nil, err
+		return
 	}
 	req.Header.Set("Content-Type", "application/x-git-upload-pack-request")
 	req.Header.Set("Accept", "application/x-git-upload-pack-result")
 	req.Header.Set("User-Agent", "github.com/thecodearchive/gitarchive/git")
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("POST /git-upload-pack: %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("POST /git-upload-pack: %d", resp.StatusCode)
 	}
 
-	res.PackRef, res.BytesFetched, err = ParseUploadPackResponse(resp.Body,
-		uploader, msgW, bwCounter)
-	if res.BytesFetched == 32 { // empty packfile (hdr is 12, trailer is 20)
-		res.PackRef = ""
-	}
-	return res, err
+	sbr := &sideBandReader{Upstream: resp.Body, MsgW: msgW}
+	cr := &countingReader{Upstream: sbr, Counter: bwCounter}
+
+	// TODO peek into reader to make sure it's not empty.
+	// Needs to be > 32 bytes (hdr is 12, trailer is 20).
+
+	return refs, cr, nil
 }
