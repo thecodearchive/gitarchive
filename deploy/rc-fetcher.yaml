@@ -12,10 +12,10 @@ spec:
     spec:
       containers:
       - name: fetcher
-        image: gcr.io/code-archive/fetcher:v7
+        image: gcr.io/code-archive/fetcher:v9
         volumeMounts:
-        - name: camli-secring
-          mountPath: /data/secring
+        - name: gcs-keys
+          mountPath: /gcs-keys
           readOnly: true
         env:
         - name: SCHEDULE
@@ -23,10 +23,10 @@ spec:
           value: "///gAA/gAA/gAA/gAA/gAA//////"
         - name: INFLUX_ADDR
           value: "http://influx:8086"
-        - name: QUEUE_ADDR
+        - name: DB_ADDR
           value: "root:toor@tcp(queue:3306)/gitarchive"
-        - name: CAMLI_SERVER
-          value: "http://camli:3179"
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/gcs-keys/fetcher-gcs-key.json"
         resources:
           requests:
             cpu: "50m"
@@ -34,6 +34,7 @@ spec:
           limits:
             memory: "1Gi"
       volumes:
-      - name: camli-secring
+      - name: gcs-keys
         secret:
-          secretName: camli-secring
+          secretName: gcs-keys
+

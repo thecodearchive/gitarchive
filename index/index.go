@@ -25,13 +25,13 @@ func Open(dataSourceName string) (*Index, error) {
 	i := &Index{db: db}
 
 	query := `CREATE TABLE IF NOT EXISTS Fetches (
-		Name VARCHAR(255) NOT NULL INDEX, Parent VARCHAR(255),
+		Name VARCHAR(255) NOT NULL, INDEX (Name), Parent VARCHAR(255),
 		Timestamp DATETIME, Refs JSON,
-		PackID BIGINT UNIQUE INDEX AUTO_INCREMENT, PackRef VARCHAR(255))`
+		PackID BIGINT UNIQUE KEY AUTO_INCREMENT, PackRef VARCHAR(255))`
 	if _, err = db.Exec(query); err != nil {
 		return nil, errors.Wrap(err, "failed to create Fetches")
 	}
-	query = `CREATE TABLE IF NOT EXISTS PackDeps (ID BIGINT INDEX, Dep BIGINT)`
+	query = `CREATE TABLE IF NOT EXISTS PackDeps (ID BIGINT, INDEX (ID), Dep BIGINT)`
 	if _, err = db.Exec(query); err != nil {
 		return nil, errors.Wrap(err, "failed to create PackDeps")
 	}
