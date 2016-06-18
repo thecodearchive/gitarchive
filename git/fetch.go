@@ -116,6 +116,9 @@ func buildResponse(refs map[string]string, haves map[string]struct{}) *bytes.Buf
 		if _, ok := haves[ref]; ok {
 			continue
 		}
+		if strings.HasSuffix(name, "^{}") {
+			continue
+		}
 		wants = append(wants, refs[name])
 	}
 	sort.Strings(wants)

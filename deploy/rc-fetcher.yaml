@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: fetcher
-        image: gcr.io/code-archive/fetcher:v9
+        image: gcr.io/code-archive/fetcher:v11
         volumeMounts:
         - name: gcs-keys
           mountPath: /gcs-keys

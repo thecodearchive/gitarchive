@@ -3,7 +3,7 @@ unexport GOBIN
 IMPORT_PATH      := github.com/thecodearchive/gitarchive
 
 .PHONY: all clean
-all: bin/fetcher bin/drinker bin/clone bin/migrate_cache
+all: bin/fetcher bin/drinker bin/clone
 clean:
 	rm -r .GOPATH/bin .GOPATH/pkg
 
