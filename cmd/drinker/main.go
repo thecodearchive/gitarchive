@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
-	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/github"
 	"github.com/thecodearchive/gitarchive/metrics"
 	"github.com/thecodearchive/gitarchive/queue"
@@ -65,9 +64,6 @@ func main() {
 	err = metrics.StartInfluxExport(MustGetenv("INFLUX_ADDR"), "drinker", exp)
 	fatalIfErr(err)
 
-	u, err := camli.NewUploader()
-	fatalIfErr(err)
-
 	qDriver := "sqlite3"
 	if strings.Index(MustGetenv("QUEUE_ADDR"), "@") != -1 {
 		qDriver = "mysql"
@@ -90,7 +86,7 @@ func main() {
 	db.NoSync = true
 
 	d := &Drinker{
-		q: q, st: st, u: u,
+		q: q, st: st,
 		exp: exp, expEvents: expEvents, expLatest: expLatest,
 	}
 

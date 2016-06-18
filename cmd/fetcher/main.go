@@ -8,12 +8,12 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"golang.org/x/net/context"
 	"google.golang.org/cloud/storage"
 
+	"github.com/thecodearchive/gitarchive/index"
 	"github.com/thecodearchive/gitarchive/metrics"
 	"github.com/thecodearchive/gitarchive/queue"
 	"github.com/thecodearchive/gitarchive/weekmap"
@@ -37,12 +37,8 @@ func main() {
 
 	bucket := client.Bucket(OptGetenv("FETCHER_BUCKET_NAME", "packfiles"))
 
-	qDriver := "sqlite3"
-	if strings.Index(MustGetenv("QUEUE_ADDR"), "@") != -1 {
-		qDriver = "mysql"
-	}
-	log.Printf("[ ] Opening queue (%s)...", qDriver)
-	q, err := queue.Open(qDriver, MustGetenv("QUEUE_ADDR"))
+	log.Println("[ ] Opening queue...")
+	q, err := queue.Open("mysql", MustGetenv("DB_ADDR"))
 	fatalIfErr(err)
 	defer func() {
 		log.Println("[ ] Closing queue...")
@@ -53,7 +49,15 @@ func main() {
 		return res
 	}))
 
-	f := &Fetcher{exp: exp, q: q, bucket: bucket, schedule: schedule}
+	log.Println("[ ] Opening index...")
+	i, err := index.Open(MustGetenv("DB_ADDR"))
+	fatalIfErr(err)
+	defer func() {
+		log.Println("[ ] Closing index...")
+		fatalIfErr(i.Close())
+	}()
+
+	f := &Fetcher{exp: exp, q: q, i: i, bucket: bucket, schedule: schedule}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)

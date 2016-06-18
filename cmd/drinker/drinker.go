@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/thecodearchive/gitarchive/camli"
 	"github.com/thecodearchive/gitarchive/github"
 	"github.com/thecodearchive/gitarchive/queue"
 )
@@ -20,7 +19,6 @@ import (
 type Drinker struct {
 	q  *queue.Queue
 	st *github.StarTracker
-	u  *camli.Uploader
 
 	exp       *expvar.Map
 	expEvents *expvar.Map
@@ -93,19 +91,6 @@ func (d *Drinker) DrinkArchive(a io.Reader) error {
 }
 
 func (d *Drinker) handlePushEvent(e *github.Event) {
-	url := "https://github.com/" + e.Repo.Name + ".git"
-	repo, err := d.u.GetRepo(url)
-	if err != nil {
-		d.exp.Add("dropped", 1)
-		log.Printf("[-] Camli error: %s; dropped event: %#v", err, e)
-		return
-	}
-	if repo != nil {
-		d.exp.Add("gotrepo", 1)
-		d.exp.Add("queued", 1)
-		d.q.Add(e.Repo.Name, repo.Parent)
-	}
-
 	stars, parent, err := d.st.Get(e.Repo.Name)
 	if rate := github.IsRateLimit(err); rate != nil {
 		d.exp.Add("ratehits", 1)

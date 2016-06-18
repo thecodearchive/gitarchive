@@ -199,6 +199,14 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/pkg/errors",
+			"repository": "https://github.com/pkg/errors",
+			"vcs": "git",
+			"revision": "9a4f977a0570cd26a97bdab0f50df0004983bb42",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/tinylib/msgp/msgp",
 			"repository": "https://github.com/tinylib/msgp",
 			"vcs": "git",
