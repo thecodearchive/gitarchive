@@ -90,7 +90,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 		return err
 	}
 
-	packRefName := fmt.Sprintf("%s|%d", name, time.Now().UnixNano())
+	packRefName := fmt.Sprintf("%s/%d", name, time.Now().UnixNano())
 	if r != nil {
 		w := f.bucket.Object(packRefName).NewWriter(context.Background())
 
