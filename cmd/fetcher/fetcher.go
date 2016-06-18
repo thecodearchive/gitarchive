@@ -61,8 +61,8 @@ func (f *Fetcher) Run() error {
 func (f *Fetcher) Fetch(name, parent string) error {
 	f.exp.Add("fetches", 1)
 
-	url := "https://github.com/" + name + ".git"
-	haves, deps, err := f.i.GetHaves(url)
+	name = "github.com/" + name
+	haves, deps, err := f.i.GetHaves(name)
 	if err != nil {
 		return err
 	}
@@ -85,12 +85,12 @@ func (f *Fetcher) Fetch(name, parent string) error {
 
 	start := time.Now()
 	bw := f.exp.Get("fetchbytes").(*expvar.Int)
-	refs, r, err := git.Fetch(url, haves, os.Stderr, bw)
+	refs, r, err := git.Fetch("git://"+name+".git", haves, os.Stderr, bw)
 	if err != nil {
 		return err
 	}
 
-	packRefName := fmt.Sprintf("%s|%d", url, time.Now().UnixNano())
+	packRefName := fmt.Sprintf("%s|%d", name, time.Now().UnixNano())
 	if r != nil {
 		w := f.bucket.Object(packRefName).NewWriter(context.Background())
 
@@ -109,12 +109,11 @@ func (f *Fetcher) Fetch(name, parent string) error {
 		log.Printf("[+] Got %d refs, and a empty packfile.", len(refs))
 	}
 
-	urlParent := ""
 	if parent != "" {
-		urlParent = "https://github.com/" + parent + ".git"
+		parent = "github.com/" + parent
 	}
 
-	f.i.AddFetch(url, urlParent, time.Now(), refs, packRefName, deps)
+	f.i.AddFetch(name, parent, time.Now(), refs, packRefName, deps)
 	return err
 }
 
