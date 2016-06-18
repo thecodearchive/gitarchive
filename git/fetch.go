@@ -49,13 +49,13 @@ func Fetch(gitURL string, haves map[string]struct{}, msgW io.Writer,
 	// Needs to be > 32 bytes (hdr is 12, trailer is 20).
 	var buf bytes.Buffer
 	n, err := io.CopyN(&buf, cr, 64)
-	if err == io.EOF && n == 32 {
-		r.Close()
-		return refs, nil, nil
-	}
-	if err != nil {
+	if err != io.EOF && err != nil {
 		r.Close()
 		return nil, nil, err
+	}
+	if n == 32 {
+		r.Close()
+		return refs, nil, nil
 	}
 	rc := struct {
 		io.Reader
