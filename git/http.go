@@ -10,8 +10,14 @@ import (
 	"strings"
 )
 
+// Fetch fetches the git repo at gitURL proving the refs in haves as
+// haves.
+//
+// Sideband messages from the git server are writetn to msgW, and the
+// number of bytes fetched is incremented in bwCounter. bwCounter is
+// incremented here to get fine-grained metrics.
 func Fetch(gitURL string, haves map[string]struct{}, msgW io.Writer,
-	bwCounter *expvar.Int) (refs map[string]string, r io.Reader, err error) {
+	bwCounter *expvar.Int) (refs map[string]string, r io.ReadCloser, err error) {
 
 	req, err := http.NewRequest("GET", gitURL+"/info/refs?service=git-upload-pack", nil)
 	if err != nil {
@@ -89,8 +95,25 @@ func Fetch(gitURL string, haves map[string]struct{}, msgW io.Writer,
 	sbr := &sideBandReader{Upstream: resp.Body, MsgW: msgW}
 	cr := &countingReader{Upstream: sbr, Counter: bwCounter}
 
-	// TODO peek into reader to make sure it's not empty.
+	// Peek into the first 32 bytes to make sure it's not an empty
+	// packfile.
 	// Needs to be > 32 bytes (hdr is 12, trailer is 20).
-
-	return refs, cr, nil
+	var buf bytes.Buffer
+	n, err := io.CopyN(&buf, cr, 64)
+	if err == io.EOF && n == 32 {
+		resp.Body.Close()
+		return refs, nil, nil
+	}
+	if err != nil {
+		resp.Body.Close()
+		return
+	}
+	rc := struct {
+		io.Reader
+		io.Closer
+	}{
+		Reader: io.MultiReader(&buf, cr),
+		Closer: resp.Body,
+	}
+	return refs, rc, nil
 }
