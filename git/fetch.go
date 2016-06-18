@@ -13,6 +13,8 @@ import (
 	"strings"
 )
 
+var RepoNotFoundError = errors.New("repository not found")
+
 // Fetch fetches the git repo at gitURL and the returns the refs.
 //
 // It supports git:// and http(s):// URLs.
@@ -163,6 +165,9 @@ func fetchHTTP(gitURL string, haves map[string]struct{}) (refs map[string]string
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == 401 || resp.StatusCode == 404 {
+		return nil, nil, RepoNotFoundError
+	}
 	if resp.StatusCode != 200 {
 		return nil, nil, fmt.Errorf("GET /info/refs: %d", resp.StatusCode)
 	}

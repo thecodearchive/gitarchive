@@ -51,6 +51,10 @@ func ParseSmartResponse(body io.Reader, gitProto bool) (refs map[string]string, 
 			line = line[:len(line)-1]
 		}
 
+		if line == "ERR \n  Repository not found." {
+			return nil, RepoNotFoundError
+		}
+
 		switch state {
 		case "service-header":
 			if line != "# service=git-upload-pack" {

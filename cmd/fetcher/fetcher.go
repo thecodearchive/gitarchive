@@ -86,6 +86,11 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	start := time.Now()
 	bw := f.exp.Get("fetchbytes").(*expvar.Int)
 	refs, r, err := git.Fetch("git://"+name+".git", haves, os.Stderr, bw)
+	if err == git.RepoNotFoundError {
+		log.Println("[-] Repository vanished :(")
+		f.exp.Add("vanished", 1)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -113,8 +118,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 		parent = "github.com/" + parent
 	}
 
-	f.i.AddFetch(name, parent, time.Now(), refs, packRefName, deps)
-	return err
+	return f.i.AddFetch(name, parent, time.Now(), refs, packRefName, deps)
 }
 
 func (f *Fetcher) Stop() {
