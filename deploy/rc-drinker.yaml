@@ -12,11 +12,8 @@ spec:
     spec:
       containers:
       - name: drinker
-        image: gcr.io/code-archive/drinker:v14
+        image: gcr.io/code-archive/drinker:v15
         volumeMounts:
-        - name: camli-secring
-          mountPath: /data/secring
-          readOnly: true
         - name: drinker-cache
           mountPath: /cache
         env:
@@ -26,8 +23,6 @@ spec:
           value: "root:toor@tcp(queue:3306)/gitarchive"
         - name: CACHE_PATH
           value: "/cache/cache.db"
-        - name: CAMLI_SERVER
-          value: "http://camli:3179"
         - name: GITHUB_TOKEN
           valueFrom:
             secretKeyRef:
@@ -39,9 +34,6 @@ spec:
           limits:
             memory: "1Gi"
       volumes:
-      - name: camli-secring
-        secret:
-          secretName: camli-secring
       - name: drinker-cache
         gcePersistentDisk:
           pdName: drinker-cache
