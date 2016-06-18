@@ -1,7 +1,6 @@
 package git
 
 import (
-	"errors"
 	"expvar"
 	"fmt"
 	"io"
@@ -9,12 +8,19 @@ import (
 	"strings"
 )
 
-var GitParseError = errors.New("failed parsing the git protocol")
+type GitParseError string
 
-func ParseSmartResponse(body io.Reader) (refs map[string]string, err error) {
+func (e GitParseError) Error() string {
+	return "failed parsing the git protocol at state: " + string(e)
+}
+
+func ParseSmartResponse(body io.Reader, gitProto bool) (refs map[string]string, err error) {
 	// https://github.com/git/git/blob/master/Documentation/technical/http-protocol.txt
 	refs = make(map[string]string)
 	state := "service-header"
+	if gitProto {
+		state = "head"
+	}
 	for {
 		pktLenHex := make([]byte, 4)
 		if _, err := io.ReadFull(body, pktLenHex); err == io.EOF {
@@ -29,7 +35,11 @@ func ParseSmartResponse(body io.Reader) (refs map[string]string, err error) {
 
 		// "0000" marker
 		if pktLen == 0 {
-			continue
+			if gitProto {
+				return refs, nil
+			} else {
+				continue
+			}
 		}
 
 		lineBuf := make([]byte, pktLen-4)
@@ -44,19 +54,19 @@ func ParseSmartResponse(body io.Reader) (refs map[string]string, err error) {
 		switch state {
 		case "service-header":
 			if line != "# service=git-upload-pack" {
-				return nil, GitParseError
+				return nil, GitParseError(state)
 			}
 			state = "head"
 
 		case "head":
 			parts := strings.SplitN(line, "\x00", 2)
 			if len(parts) != 2 {
-				return nil, GitParseError
+				return nil, GitParseError(state)
 			}
 
 			refParts := strings.SplitN(parts[0], " ", 2)
 			if len(refParts) != 2 {
-				return nil, GitParseError
+				return nil, GitParseError(state)
 			}
 			refs[refParts[1]] = refParts[0]
 
@@ -67,7 +77,7 @@ func ParseSmartResponse(body io.Reader) (refs map[string]string, err error) {
 		case "ref-list":
 			refParts := strings.SplitN(line, " ", 2)
 			if len(refParts) != 2 {
-				return nil, GitParseError
+				return nil, GitParseError(state)
 			}
 			refs[refParts[1]] = refParts[0]
 
