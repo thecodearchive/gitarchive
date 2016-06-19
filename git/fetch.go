@@ -58,7 +58,7 @@ func Fetch(gitURL string, haves map[string]struct{}, msgW io.Writer,
 		r.Close()
 		return nil, nil, err
 	}
-	if n == 32 {
+	if n == 32 || n == 0 {
 		r.Close()
 		return refs, nil, nil
 	}
