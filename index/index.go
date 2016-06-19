@@ -14,6 +14,8 @@ type Index struct {
 
 	insertFetchQ, insertDepQ *sql.Stmt
 	selectQ, latestQ         *sql.Stmt
+
+	insertBlacklistQ, selectBlacklistQ *sql.Stmt
 }
 
 func Open(dataSourceName string) (*Index, error) {
@@ -31,29 +33,54 @@ func Open(dataSourceName string) (*Index, error) {
 	if _, err = db.Exec(query); err != nil {
 		return nil, errors.Wrap(err, "failed to create Fetches")
 	}
+
 	query = `CREATE TABLE IF NOT EXISTS PackDeps (ID BIGINT, INDEX (ID), Dep BIGINT)`
 	if _, err = db.Exec(query); err != nil {
 		return nil, errors.Wrap(err, "failed to create PackDeps")
 	}
 
-	query = `INSERT INTO Fetches (Name, Parent, Timestamp, Refs, PackRef)
-		VALUES (?, ?, ?, ?, ?)`
-	if i.insertFetchQ, err = db.Prepare(query); err != nil {
-		return nil, errors.Wrap(err, "failed to prepare INSERT")
-	}
-	query = `INSERT INTO PackDeps (ID, Dep) VALUES (?, ?)`
-	if i.insertDepQ, err = db.Prepare(query); err != nil {
-		return nil, errors.Wrap(err, "failed to prepare INSERT")
+	query = `CREATE TABLE IF NOT EXISTS Blacklist (
+		Name VARCHAR(255) NOT NULL, INDEX (Name), Whitelisted BOOLEAN NOT NULL DEFAULT 0)`
+	if _, err = db.Exec(query); err != nil {
+		return nil, errors.Wrap(err, "failed to create Blacklist")
 	}
 
-	query = `SELECT Timestamp FROM Fetches WHERE Name = ? ORDER BY Timestamp DESC LIMIT 1`
-	if i.latestQ, err = db.Prepare(query); err != nil {
-		return nil, errors.Wrap(err, "failed to prepare SELECT")
+	prepStmts := []struct {
+		name **sql.Stmt
+		sql  string
+	}{
+		{
+			&i.insertFetchQ,
+			`INSERT INTO Fetches (Name, Parent, Timestamp, Refs, PackRef) VALUES (?, ?, ?, ?, ?)`,
+		},
+		{
+			&i.insertDepQ,
+			`INSERT INTO PackDeps (ID, Dep) VALUES (?, ?)`,
+		},
+		{
+			&i.latestQ,
+			`SELECT Timestamp FROM Fetches WHERE Name = ? ORDER BY Timestamp DESC LIMIT 1`,
+		},
+		{
+			&i.selectQ,
+			`SELECT Parent, Refs, PackID FROM Fetches WHERE Name = ? ORDER BY Timestamp DESC LIMIT 1`,
+		},
+		{
+			&i.insertBlacklistQ,
+			`INSERT INTO Blacklist (Name) VALUES (?)`,
+		},
+		{
+			&i.selectBlacklistQ,
+			`SELECT Whitelisted FROM Blacklist WHERE Name = ?`,
+		},
 	}
-	query = `SELECT Parent, Refs, PackID FROM Fetches WHERE Name = ?
-		ORDER BY Timestamp DESC LIMIT 1`
-	if i.selectQ, err = db.Prepare(query); err != nil {
-		return nil, errors.Wrap(err, "failed to prepare SELECT")
+
+	for _, x := range prepStmts {
+		stmt, err := db.Prepare(x.sql)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to prepare '%s'", x.sql)
+		}
+		*x.name = stmt
 	}
 
 	return i, nil
@@ -135,6 +162,34 @@ func (i *Index) GetHaves(name string) (haves map[string]struct{}, deps []string,
 	}
 
 	return
+}
+
+func (i *Index) AddBlacklist(name string) error {
+	_, err := i.insertBlacklistQ.Exec(name)
+	return err
+}
+
+type BlacklistState int
+
+const (
+	Blacklisted BlacklistState = iota
+	Whitelisted
+	Neutral
+)
+
+func (i *Index) BlacklistState(name string) (BlacklistState, error) {
+	var whitelisted bool
+	err := i.selectBlacklistQ.QueryRow(name).Scan(&whitelisted)
+	if err == sql.ErrNoRows {
+		return Neutral, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if whitelisted {
+		return Whitelisted, nil
+	}
+	return Blacklisted, nil
 }
 
 func (i *Index) Close() error {

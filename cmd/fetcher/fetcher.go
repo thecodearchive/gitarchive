@@ -66,6 +66,17 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	f.exp.Add("fetches", 1)
 
 	name = "github.com/" + name
+
+	blacklistState, err := f.i.BlacklistState(name)
+	if err != nil {
+		return err
+	}
+	if blacklistState == index.Blacklisted {
+		log.Println("[-] Skipping blacklisted repository.")
+		f.exp.Add("blacklisted", 1)
+		return nil
+	}
+
 	haves, deps, err := f.i.GetHaves(name)
 	if err != nil {
 		return err
@@ -89,7 +100,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 
 	start := time.Now()
 	bw := f.exp.Get("fetchbytes").(*expvar.Int)
-	refs, r, err := git.Fetch("git://"+name+".git", haves, os.Stderr, bw)
+	refs, packR, err := git.Fetch("git://"+name+".git", haves, os.Stderr, bw)
 	if err, ok := err.(git.RemoteError); ok {
 		if strings.Contains(err.Message, "Repository not found.") {
 			log.Println("[-] Repository vanished :(")
@@ -107,17 +118,21 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	}
 
 	packRefName := fmt.Sprintf("%s/%d", name, time.Now().UnixNano())
-	if r != nil {
+	if packR != nil {
 		w := f.bucket.Object(packRefName).NewWriter(context.Background())
 
-		lr := &io.LimitedReader{R: r, N: int64(maxSize)}
-		bytesFetched, err := io.Copy(w, lr)
+		var r io.Reader = packR
+		if blacklistState != index.Whitelisted {
+			r = &io.LimitedReader{R: r, N: int64(maxSize)}
+		}
+		bytesFetched, err := io.Copy(w, r)
 		if err != nil {
 			return err
 		}
-		r.Close()
-		if lr.N <= 0 {
+		packR.Close()
+		if r, ok := r.(*io.LimitedReader); ok && r.N <= 0 {
 			w.CloseWithError(errors.New("too big"))
+			f.i.AddBlacklist(name)
 			log.Printf("[-] Repository too big :(")
 			f.exp.Add("toobig", 1)
 			return nil
