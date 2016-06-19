@@ -22,7 +22,7 @@ import (
 	"github.com/thecodearchive/gitarchive/weekmap"
 )
 
-const maxSize = 100 << 20
+var maxSize = MustGetenvInt("MAX_REPO_SIZE")
 
 type Fetcher struct {
 	q        *queue.Queue
@@ -110,7 +110,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	if r != nil {
 		w := f.bucket.Object(packRefName).NewWriter(context.Background())
 
-		lr := &io.LimitedReader{R: r, N: maxSize}
+		lr := &io.LimitedReader{R: r, N: int64(maxSize)}
 		bytesFetched, err := io.Copy(w, lr)
 		if err != nil {
 			return err

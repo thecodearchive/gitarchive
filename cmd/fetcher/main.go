@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"golang.org/x/net/context"
@@ -84,6 +85,14 @@ func MustGetenv(name string) string {
 		log.Panicln("Missing environment variable:", name)
 	}
 	return val
+}
+
+func MustGetenvInt(name string) int {
+	i, err := strconv.Atoi(os.Getenv(name))
+	if err != nil {
+		log.Panicln("Missing environment variable:", name)
+	}
+	return i
 }
 
 func OptGetenv(name, defaultVal string) string {

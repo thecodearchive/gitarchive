@@ -21,6 +21,8 @@ spec:
         - name: SCHEDULE
           # 05:00 - 12:00 UTC + weekends
           value: "///gAA/gAA/gAA/gAA/gAA//////"
+        - name: MAX_REPO_SIZE
+          value: "250000000"
         - name: INFLUX_ADDR
           value: "http://influx:8086"
         - name: DB_ADDR
