@@ -19,6 +19,11 @@ func main() {
 	}
 	json.NewEncoder(os.Stdout).Encode(refs)
 
+	if rc == nil {
+		log.Println("Empty packfile.")
+		return
+	}
+
 	n, err := io.Copy(ioutil.Discard, rc)
 	if err != nil {
 		log.Fatal(err)

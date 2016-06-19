@@ -3,7 +3,7 @@ kind: ReplicationController
 metadata:
   name: fetcher
 spec:
-  replicas: 4
+  replicas: 1
   template:
     metadata:
       name: fetcher
@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: fetcher
-        image: gcr.io/code-archive/fetcher:v12
+        image: gcr.io/code-archive/fetcher:v14
         volumeMounts:
         - name: gcs-keys
           mountPath: /gcs-keys

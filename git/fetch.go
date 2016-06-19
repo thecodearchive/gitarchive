@@ -43,6 +43,11 @@ func Fetch(gitURL string, haves map[string]struct{}, msgW io.Writer,
 		return nil, nil, err
 	}
 
+	if r == nil {
+		// We came up with no wants. We already have all the objects.
+		return refs, nil, nil
+	}
+
 	sbr := &sideBandReader{Upstream: r, MsgW: msgW}
 	cr := &countingReader{Upstream: sbr, Counter: bwCounter}
 
