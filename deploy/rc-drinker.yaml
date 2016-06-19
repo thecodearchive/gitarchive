@@ -19,7 +19,7 @@ spec:
         env:
         - name: INFLUX_ADDR
           value: "http://influx:8086"
-        - name: QUEUE_ADDR
+        - name: DB_ADDR
           value: "root:toor@tcp(queue:3306)/gitarchive"
         - name: CACHE_PATH
           value: "/cache/cache.db"

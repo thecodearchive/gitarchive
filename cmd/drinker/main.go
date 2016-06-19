@@ -13,6 +13,7 @@ import (
 
 	"github.com/boltdb/bolt"
 	"github.com/thecodearchive/gitarchive/github"
+	"github.com/thecodearchive/gitarchive/index"
 	"github.com/thecodearchive/gitarchive/metrics"
 	"github.com/thecodearchive/gitarchive/queue"
 )
@@ -64,13 +65,21 @@ func main() {
 	fatalIfErr(err)
 
 	log.Println("[ ] Opening queue...")
-	q, err := queue.Open(MustGetenv("QUEUE_ADDR"))
+	q, err := queue.Open(MustGetenv("DB_ADDR"))
 	fatalIfErr(err)
 	defer func() {
 		log.Println("[ ] Closing queue...")
 		if err := q.Close(); err != nil {
 			log.Println(err)
 		}
+	}()
+
+	log.Println("[ ] Opening index...")
+	i, err := index.Open(MustGetenv("DB_ADDR"))
+	fatalIfErr(err)
+	defer func() {
+		log.Println("[ ] Closing index...")
+		fatalIfErr(i.Close())
 	}()
 
 	st := github.NewStarTracker(db, MustGetenv("GITHUB_TOKEN"))
@@ -81,7 +90,7 @@ func main() {
 	db.NoSync = true
 
 	d := &Drinker{
-		q: q, st: st,
+		q: q, st: st, i: i,
 		exp: exp, expEvents: expEvents, expLatest: expLatest,
 	}
 

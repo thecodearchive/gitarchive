@@ -13,11 +13,11 @@ type Index struct {
 	db *sql.DB
 
 	insertFetchQ, insertDepQ *sql.Stmt
-	selectQ                  *sql.Stmt
+	selectQ, latestQ         *sql.Stmt
 }
 
 func Open(dataSourceName string) (*Index, error) {
-	db, err := sql.Open("mysql", dataSourceName)
+	db, err := sql.Open("mysql", dataSourceName+"?parseTime=true")
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +46,10 @@ func Open(dataSourceName string) (*Index, error) {
 		return nil, errors.Wrap(err, "failed to prepare INSERT")
 	}
 
+	query = `SELECT Timestamp FROM Fetches WHERE Name = ? ORDER BY Timestamp DESC LIMIT 1`
+	if i.latestQ, err = db.Prepare(query); err != nil {
+		return nil, errors.Wrap(err, "failed to prepare SELECT")
+	}
 	query = `SELECT Parent, Refs, PackID FROM Fetches WHERE Name = ?
 		ORDER BY Timestamp DESC LIMIT 1`
 	if i.selectQ, err = db.Prepare(query); err != nil {
@@ -76,6 +80,15 @@ func (i *Index) AddFetch(name, parent string, timestamp time.Time,
 		}
 	}
 	return nil
+}
+
+func (i *Index) GetLatest(name string) (timestamp time.Time, err error) {
+	err = i.latestQ.QueryRow(name).Scan(&timestamp)
+	if err == sql.ErrNoRows {
+		timestamp = time.Time{}
+		err = nil
+	}
+	return
 }
 
 func (i *Index) GetHaves(name string) (haves map[string]struct{}, deps []string, err error) {

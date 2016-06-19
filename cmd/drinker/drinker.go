@@ -13,11 +13,13 @@ import (
 	"time"
 
 	"github.com/thecodearchive/gitarchive/github"
+	"github.com/thecodearchive/gitarchive/index"
 	"github.com/thecodearchive/gitarchive/queue"
 )
 
 type Drinker struct {
 	q  *queue.Queue
+	i  *index.Index
 	st *github.StarTracker
 
 	exp       *expvar.Map
@@ -91,6 +93,16 @@ func (d *Drinker) DrinkArchive(a io.Reader) error {
 }
 
 func (d *Drinker) handlePushEvent(e *github.Event) {
+	latestFetch, err := d.i.GetLatest("github.com/" + e.Repo.Name)
+	if err != nil {
+		log.Println("[-] Index error:", err)
+	} else {
+		if !latestFetch.IsZero() && e.CreatedAt.Time.Before(latestFetch) {
+			d.exp.Add("alreadyfetched", 1)
+			return
+		}
+	}
+
 	stars, parent, err := d.st.Get(e.Repo.Name)
 	if rate := github.IsRateLimit(err); rate != nil {
 		d.exp.Add("ratehits", 1)
