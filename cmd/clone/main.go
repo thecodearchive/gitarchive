@@ -13,7 +13,12 @@ import (
 func main() {
 	url := os.Args[1]
 
-	refs, rc, err := git.Fetch(url, nil, os.Stderr, nil)
+	haves := make(map[string]struct{})
+	for _, arg := range os.Args[2:] {
+		haves[arg] = struct{}{}
+	}
+
+	refs, rc, err := git.Fetch(url, haves, os.Stderr, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

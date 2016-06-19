@@ -96,7 +96,7 @@ func (i *Index) GetHaves(name string) (haves map[string]struct{}, deps []string,
 	}
 
 	haves = make(map[string]struct{})
-	for ref := range r {
+	for _, ref := range r {
 		haves[ref] = struct{}{}
 	}
 	deps = append(deps, packID)
