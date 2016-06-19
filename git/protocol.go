@@ -8,10 +8,20 @@ import (
 	"strings"
 )
 
-type GitParseError string
+type GitParseError struct {
+	state string
+}
 
 func (e GitParseError) Error() string {
-	return "failed parsing the git protocol at state: " + string(e)
+	return "failed parsing the git protocol at state: " + e.state
+}
+
+type RemoteError struct {
+	Message string
+}
+
+func (e RemoteError) Error() string {
+	return "remote error: " + e.Message
 }
 
 func ParseSmartResponse(body io.Reader, gitProto bool) (refs map[string]string, err error) {
@@ -51,26 +61,26 @@ func ParseSmartResponse(body io.Reader, gitProto bool) (refs map[string]string, 
 			line = line[:len(line)-1]
 		}
 
-		if line == "ERR \n  Repository not found." {
-			return nil, RepoNotFoundError
-		}
-
 		switch state {
 		case "service-header":
 			if line != "# service=git-upload-pack" {
-				return nil, GitParseError(state)
+				return nil, GitParseError{state}
 			}
 			state = "head"
 
 		case "head":
+			if strings.HasPrefix(line, "ERR") {
+				return nil, RemoteError{strings.Trim(line[len("ERR"):], " \n")}
+			}
+
 			parts := strings.SplitN(line, "\x00", 2)
 			if len(parts) != 2 {
-				return nil, GitParseError(state)
+				return nil, GitParseError{state}
 			}
 
 			refParts := strings.SplitN(parts[0], " ", 2)
 			if len(refParts) != 2 {
-				return nil, GitParseError(state)
+				return nil, GitParseError{state}
 			}
 			refs[refParts[1]] = refParts[0]
 
@@ -81,7 +91,7 @@ func ParseSmartResponse(body io.Reader, gitProto bool) (refs map[string]string, 
 		case "ref-list":
 			refParts := strings.SplitN(line, " ", 2)
 			if len(refParts) != 2 {
-				return nil, GitParseError(state)
+				return nil, GitParseError{state}
 			}
 			refs[refParts[1]] = refParts[0]
 

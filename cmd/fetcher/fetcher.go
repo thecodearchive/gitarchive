@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -89,10 +90,17 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	start := time.Now()
 	bw := f.exp.Get("fetchbytes").(*expvar.Int)
 	refs, r, err := git.Fetch("git://"+name+".git", haves, os.Stderr, bw)
-	if err == git.RepoNotFoundError {
-		log.Println("[-] Repository vanished :(")
-		f.exp.Add("vanished", 1)
-		return nil
+	if err, ok := err.(git.RemoteError); ok {
+		if strings.Contains(err.Message, "Repository not found.") {
+			log.Println("[-] Repository vanished :(")
+			f.exp.Add("vanished", 1)
+			return nil
+		}
+		if strings.Contains(err.Message, "DMCA") {
+			log.Println("[-] Repository DMCA'd :(")
+			f.exp.Add("dmca", 1)
+			return nil
+		}
 	}
 	if err != nil {
 		return err
