@@ -61,12 +61,16 @@ func (i *Index) AddFetch(name, parent string, timestamp time.Time,
 	if err != nil {
 		return err
 	}
-	_, err = i.insertFetchQ.Exec(name, parent, timestamp, r, packRef)
+	res, err := i.insertFetchQ.Exec(name, parent, timestamp, r, packRef)
+	if err != nil {
+		return err
+	}
+	packID, err := res.LastInsertId()
 	if err != nil {
 		return err
 	}
 	for _, dep := range packDeps {
-		_, err := i.insertDepQ.Exec(packRef, dep)
+		_, err := i.insertDepQ.Exec(packID, dep)
 		if err != nil {
 			return err
 		}
