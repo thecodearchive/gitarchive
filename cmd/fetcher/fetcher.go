@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"expvar"
 	"fmt"
 	"io"
@@ -19,6 +20,8 @@ import (
 	"github.com/thecodearchive/gitarchive/queue"
 	"github.com/thecodearchive/gitarchive/weekmap"
 )
+
+const maxSize = 100 << 20
 
 type Fetcher struct {
 	q        *queue.Queue
@@ -99,12 +102,19 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	if r != nil {
 		w := f.bucket.Object(packRefName).NewWriter(context.Background())
 
-		bytesFetched, err := io.Copy(w, r)
+		lr := &io.LimitedReader{R: r, N: maxSize}
+		bytesFetched, err := io.Copy(w, lr)
 		if err != nil {
 			return err
 		}
-		w.Close()
 		r.Close()
+		if lr.N <= 0 {
+			w.CloseWithError(errors.New("too big"))
+			log.Printf("[-] Repository too big :(")
+			f.exp.Add("toobig", 1)
+			return nil
+		}
+		w.Close()
 		f.exp.Add("fetchtime", int64(time.Since(start)))
 		log.Printf("[+] Got %d refs, %d bytes in %s.", len(refs), bytesFetched, time.Since(start))
 	} else {
