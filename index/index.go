@@ -155,7 +155,7 @@ func (i *Index) GetHaves(name string) (haves map[string]struct{}, deps []string,
 			return
 		}
 
-		for ref := range r {
+		for _, ref := range r {
 			haves[ref] = struct{}{}
 		}
 		deps = append(deps, packID)
