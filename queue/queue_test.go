@@ -2,8 +2,6 @@ package queue
 
 import (
 	"os"
-	"os/exec"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -23,19 +21,11 @@ func checkNAndP(t *testing.T, wantN, wantP, n, p string) {
 	}
 }
 
-func TestQueue(t *testing.T) {
-	os.Remove("./test.db")
-	q, err := Open("sqlite3", "./test.db")
-	fatalIfErr(t, err)
-	testQueue(t, q)
-	fatalIfErr(t, os.Remove("./test.db"))
-}
-
 func TestQueueMySQL(t *testing.T) {
 	if os.Getenv("TEST_MYSQL_DSN") == "" {
 		t.Skip("TEST_MYSQL_DSN missing, skipping MySQL test")
 	}
-	q, err := Open("mysql", os.Getenv("TEST_MYSQL_DSN"))
+	q, err := Open(os.Getenv("TEST_MYSQL_DSN"))
 	fatalIfErr(t, err)
 	testQueue(t, q)
 }
@@ -82,6 +72,7 @@ func waitForValue(t *testing.T, q *Queue, wantN, wantP string) {
 	t.Fatalf("Never got to n = %s", wantN)
 }
 
+/*
 func TestQueueConcurrency(t *testing.T) {
 	if os.Getenv("BE_ADDER") == "1" {
 		q, err := Open("sqlite3", "./test_concurr.db")
@@ -122,3 +113,4 @@ func TestQueueConcurrency(t *testing.T) {
 		t.Fatal("How the hell did it exit cleanly?")
 	}
 }
+*/

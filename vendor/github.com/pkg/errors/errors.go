@@ -2,9 +2,9 @@
 //
 // The traditional error handling idiom in Go is roughly akin to
 //
-//      if err != nil {
-//              return err
-//      }
+//     if err != nil {
+//             return err
+//     }
 //
 // which applied recursively up the call stack results in error reports
 // without context or debugging information. The errors package allows
@@ -16,10 +16,10 @@
 // The errors.Wrap function returns a new error that adds context to the
 // original error. For example
 //
-//      _, err := ioutil.ReadAll(r)
-//      if err != nil {
-//              return errors.Wrap(err, "read failed")
-//      }
+//     _, err := ioutil.ReadAll(r)
+//     if err != nil {
+//             return errors.Wrap(err, "read failed")
+//     }
 //
 // Retrieving the cause of an error
 //
@@ -51,7 +51,7 @@
 //     %s    print the error. If the error has a Cause it will be
 //           printed recursively
 //     %v    see %s
-//     %+v   extended format. Each Frame of the error's Stacktrace will
+//     %+v   extended format. Each Frame of the error's StackTrace will
 //           be printed in detail.
 //
 // Retrieving the stack trace of an error or wrapper
@@ -59,20 +59,20 @@
 // New, Errorf, Wrap, and Wrapf record a stack trace at the point they are
 // invoked. This information can be retrieved with the following interface.
 //
-//     type Stacktrace interface {
-//             Stacktrace() errors.Stacktrace
+//     type stacktracer interface {
+//             StackTrace() errors.StackTrace
 //     }
 //
-// Where errors.Stacktrace is defined as
+// Where errors.StackTrace is defined as
 //
-//     type Stacktrace []Frame
+//     type StackTrace []Frame
 //
 // The Frame type represents a call site in the stacktrace. Frame supports
 // the fmt.Formatter interface that can be used for printing information about
 // the stacktrace of this error. For example:
 //
-//     if err, ok := err.(Stacktrace); ok {
-//             for _, f := range err.Stacktrace() {
+//     if err, ok := err.(stacktracer); ok {
+//             for _, f := range err.StackTrace() {
 //                     fmt.Printf("%+s:%d", f)
 //             }
 //     }
@@ -99,7 +99,7 @@ func (e _error) Format(s fmt.State, verb rune) {
 	case 'v':
 		if s.Flag('+') {
 			io.WriteString(s, e.msg)
-			fmt.Fprintf(s, "%+v", e.Stacktrace())
+			fmt.Fprintf(s, "%+v", e.StackTrace())
 			return
 		}
 		fallthrough
@@ -108,10 +108,10 @@ func (e _error) Format(s fmt.State, verb rune) {
 	}
 }
 
-// New returns an error that formats as the given text.
-func New(text string) error {
+// New returns an error with the supplied message.
+func New(message string) error {
 	return _error{
-		text,
+		message,
 		callers(),
 	}
 }
@@ -145,7 +145,8 @@ func (w wrapper) Format(s fmt.State, verb rune) {
 	case 'v':
 		if s.Flag('+') {
 			fmt.Fprintf(s, "%+v\n", w.Cause())
-			fmt.Fprintf(s, "%+v: %s", w.Stacktrace()[0], w.msg)
+			io.WriteString(s, w.msg)
+			fmt.Fprintf(s, "%+v", w.StackTrace())
 			return
 		}
 		fallthrough

@@ -31,3 +31,6 @@ queue.db*
 
 /.GOPATH/pkg
 /.GOPATH/bin
+
+/deploy/fetcher/fetcher
+/deploy/drinker/drinker

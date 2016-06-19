@@ -1,17 +1,8 @@
-FROM golang:1.6-alpine
+FROM scratch
 
-RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*
+ADD https://mkcert.org/generate/ /etc/ssl/certs/ca-certificates.crt
 
-RUN buildDeps='git gcc libc-dev libgcc make sqlite-dev' \
-    set -x && apk update && apk add $buildDeps \
-    && cd / && git clone --depth 1 https://github.com/thecodearchive/gitarchive \
-    && cd /gitarchive && make bin/fetcher \
-    && cp bin/fetcher /usr/local/bin/ && cd / \
-    && apk del $buildDeps && rm -rf /var/cache/apk/* && rm -rf /gitarchive \
-    && echo "Build complete."
+ADD fetcher /fetcher
 
-ADD client-config.json /root/.config/camlistore/client-config.json
-
-CMD [ "/usr/local/bin/fetcher" ]
-
+CMD [ "/fetcher" ]
 

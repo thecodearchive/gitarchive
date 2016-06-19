@@ -36,6 +36,8 @@ type Issue struct {
 	Milestone        *Milestone        `json:"milestone,omitempty"`
 	PullRequestLinks *PullRequestLinks `json:"pull_request,omitempty"`
 	Repository       *Repository       `json:"repository,omitempty"`
+	Reactions        *Reactions        `json:"reactions,omitempty"`
+	Assignees        []*User           `json:"assignees,omitempty"`
 
 	// TextMatches is only populated from search results that request text matches
 	// See: search.go and https://developer.github.com/v3/search/#text-match-metadata
@@ -56,6 +58,7 @@ type IssueRequest struct {
 	Assignee  *string   `json:"assignee,omitempty"`
 	State     *string   `json:"state,omitempty"`
 	Milestone *int      `json:"milestone,omitempty"`
+	Assignees *[]string `json:"assignees,omitempty"`
 }
 
 // IssueListOptions specifies the optional parameters to the IssuesService.List
@@ -131,6 +134,9 @@ func (s *IssuesService) listIssues(u string, opt *IssueListOptions) ([]Issue, *R
 		return nil, nil, err
 	}
 
+	// TODO: remove custom Accept header when this API fully launches.
+	req.Header.Set("Accept", mediaTypeReactionsPreview)
+
 	issues := new([]Issue)
 	resp, err := s.client.Do(req, issues)
 	if err != nil {
@@ -195,6 +201,9 @@ func (s *IssuesService) ListByRepo(owner string, repo string, opt *IssueListByRe
 		return nil, nil, err
 	}
 
+	// TODO: remove custom Accept header when this API fully launches.
+	req.Header.Set("Accept", mediaTypeReactionsPreview)
+
 	issues := new([]Issue)
 	resp, err := s.client.Do(req, issues)
 	if err != nil {
@@ -213,6 +222,9 @@ func (s *IssuesService) Get(owner string, repo string, number int) (*Issue, *Res
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// TODO: remove custom Accept header when this API fully launches.
+	req.Header.Set("Accept", mediaTypeReactionsPreview)
 
 	issue := new(Issue)
 	resp, err := s.client.Do(req, issue)
@@ -233,6 +245,9 @@ func (s *IssuesService) Create(owner string, repo string, issue *IssueRequest) (
 		return nil, nil, err
 	}
 
+	// TODO: remove custom Accept header when this API fully launches.
+	req.Header.Set("Accept", mediaTypeMultipleAssigneesPreview)
+
 	i := new(Issue)
 	resp, err := s.client.Do(req, i)
 	if err != nil {
@@ -251,6 +266,9 @@ func (s *IssuesService) Edit(owner string, repo string, number int, issue *Issue
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// TODO: remove custom Accept header when this API fully launches.
+	req.Header.Set("Accept", mediaTypeMultipleAssigneesPreview)
 
 	i := new(Issue)
 	resp, err := s.client.Do(req, i)

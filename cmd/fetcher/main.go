@@ -38,7 +38,7 @@ func main() {
 	bucket := client.Bucket(OptGetenv("FETCHER_BUCKET_NAME", "packfiles"))
 
 	log.Println("[ ] Opening queue...")
-	q, err := queue.Open("mysql", MustGetenv("DB_ADDR"))
+	q, err := queue.Open(MustGetenv("DB_ADDR"))
 	fatalIfErr(err)
 	defer func() {
 		log.Println("[ ] Closing queue...")

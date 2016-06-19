@@ -28,7 +28,7 @@ var smartResponseRefs = map[string]string{"HEAD": "21d7ee08fb632ae032079e10b41f5
 // var smartResponseCaps = []string{"multi_ack", "thin-pack", "side-band", "side-band-64k", "ofs-delta", "shallow", "no-progress", "include-tag", "multi_ack_detailed", "no-done", "symref=HEAD:refs/heads/master", "agent=git/2:2.6.5~simonsj-receive-refUpdateCommandLimit-1387-g4aa12b5"}
 
 func TestParseSmartResponse(t *testing.T) {
-	refs, err := ParseSmartResponse(bytes.NewReader(smartResponse))
+	refs, err := ParseSmartResponse(bytes.NewReader(smartResponse), false)
 	if err != nil {
 		t.Fatal(err)
 	}

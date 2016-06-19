@@ -8,7 +8,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -64,12 +63,8 @@ func main() {
 	err = metrics.StartInfluxExport(MustGetenv("INFLUX_ADDR"), "drinker", exp)
 	fatalIfErr(err)
 
-	qDriver := "sqlite3"
-	if strings.Index(MustGetenv("QUEUE_ADDR"), "@") != -1 {
-		qDriver = "mysql"
-	}
-	log.Printf("[ ] Opening queue (%s)...", qDriver)
-	q, err := queue.Open(qDriver, MustGetenv("QUEUE_ADDR"))
+	log.Println("[ ] Opening queue...")
+	q, err := queue.Open(MustGetenv("QUEUE_ADDR"))
 	fatalIfErr(err)
 	defer func() {
 		log.Println("[ ] Closing queue...")

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // Queue implements a simple de-duplicating queue that assumes that when a
@@ -25,8 +24,8 @@ type Queue struct {
 	countQ  *sql.Stmt
 }
 
-func Open(driverName, dataSourceName string) (*Queue, error) {
-	db, err := sql.Open(driverName, dataSourceName)
+func Open(dataSourceName string) (*Queue, error) {
+	db, err := sql.Open("mysql", dataSourceName)
 	if err != nil {
 		return nil, err
 	}
@@ -34,19 +33,12 @@ func Open(driverName, dataSourceName string) (*Queue, error) {
 	q := &Queue{db: db}
 
 	query := `CREATE TABLE IF NOT EXISTS Queue (
-        ID INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT UNIQUE NOT NULL, Parent TEXT)`
-	if driverName == "mysql" {
-		query = `CREATE TABLE IF NOT EXISTS Queue (
 		ID INTEGER PRIMARY KEY AUTO_INCREMENT, Name VARCHAR(256) UNIQUE NOT NULL, Parent VARCHAR(256))`
-	}
 	if _, err = db.Exec(query); err != nil {
 		return nil, fmt.Errorf("table creation failed: %s", err)
 	}
 
-	query = `INSERT OR IGNORE INTO Queue (Name, Parent) VALUES (?, ?)`
-	if driverName == "mysql" {
-		query = `INSERT INTO Queue (Name, Parent) VALUES (?, ?) ON DUPLICATE KEY UPDATE Name=VALUES(Name)`
-	}
+	query = `INSERT INTO Queue (Name, Parent) VALUES (?, ?) ON DUPLICATE KEY UPDATE Name=VALUES(Name)`
 	if q.insertQ, err = db.Prepare(query); err != nil {
 		return nil, fmt.Errorf("insert preparation failed: %s", err)
 	}
