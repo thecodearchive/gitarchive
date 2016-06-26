@@ -19,16 +19,14 @@ import (
 	"github.com/thecodearchive/gitarchive/git"
 	"github.com/thecodearchive/gitarchive/index"
 	"github.com/thecodearchive/gitarchive/queue"
-	"github.com/thecodearchive/gitarchive/weekmap"
 )
 
 var maxSize = MustGetenvInt("MAX_REPO_SIZE")
 
 type Fetcher struct {
-	q        *queue.Queue
-	i        *index.Index
-	bucket   *storage.BucketHandle
-	schedule *weekmap.WeekMap
+	q      *queue.Queue
+	i      *index.Index
+	bucket *storage.BucketHandle
 
 	exp *expvar.Map
 
@@ -38,12 +36,6 @@ type Fetcher struct {
 func (f *Fetcher) Run() error {
 	f.exp.Set("fetchbytes", &expvar.Int{})
 	for atomic.LoadUint32(&f.closing) == 0 {
-		if !f.schedule.Get(time.Now()) {
-			f.exp.Add("sleep", 1)
-			interruptableSleep(5 * time.Minute)
-			continue
-		}
-
 		name, parent, err := f.q.Pop()
 		if err != nil {
 			return err
@@ -121,7 +113,8 @@ func (f *Fetcher) Fetch(name, parent string) error {
 	if packR != nil {
 		w := f.bucket.Object(packRefName).NewWriter(context.Background())
 
-		var r io.Reader = packR
+		var cr = ChokeReader(packR, timetable[start.Weekday()][start.Hour()])
+		var r io.Reader = cr
 		if blacklistState != index.Whitelisted {
 			r = &io.LimitedReader{R: r, N: int64(maxSize)}
 		}
@@ -129,6 +122,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 		if err != nil {
 			return err
 		}
+		cr.Close()
 		packR.Close()
 		if r, ok := r.(*io.LimitedReader); ok && r.N <= 0 {
 			w.CloseWithError(errors.New("too big"))
