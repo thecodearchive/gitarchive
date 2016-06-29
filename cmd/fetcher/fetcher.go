@@ -55,7 +55,9 @@ func (f *Fetcher) Run() error {
 			continue
 		}
 
+		name = "github.com/" + name
 		if err := f.Fetch(name, parent); err != nil {
+			f.i.AddBlacklist(name, err.Error())
 			return err
 		}
 	}
@@ -64,8 +66,6 @@ func (f *Fetcher) Run() error {
 
 func (f *Fetcher) Fetch(name, parent string) error {
 	f.exp.Add("fetches", 1)
-
-	name = "github.com/" + name
 
 	blacklistState, err := f.i.BlacklistState(name)
 	if err != nil {
@@ -132,7 +132,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 		packR.Close()
 		if r, ok := r.(*io.LimitedReader); ok && r.N <= 0 {
 			w.CloseWithError(errors.New("too big"))
-			f.i.AddBlacklist(name)
+			f.i.AddBlacklist(name, "Too big.")
 			log.Printf("[-] Repository too big :(")
 			f.exp.Add("toobig", 1)
 			return nil

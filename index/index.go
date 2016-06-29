@@ -40,7 +40,8 @@ func Open(dataSourceName string) (*Index, error) {
 	}
 
 	query = `CREATE TABLE IF NOT EXISTS Blacklist (
-		Name VARCHAR(255) NOT NULL, INDEX (Name), Whitelisted BOOLEAN NOT NULL DEFAULT 0)`
+		Name VARCHAR(255) NOT NULL, INDEX (Name),
+		Whitelisted BOOLEAN NOT NULL DEFAULT 0, Reason TEXT)`
 	if _, err = db.Exec(query); err != nil {
 		return nil, errors.Wrap(err, "failed to create Blacklist")
 	}
@@ -67,7 +68,7 @@ func Open(dataSourceName string) (*Index, error) {
 		},
 		{
 			&i.insertBlacklistQ,
-			`INSERT INTO Blacklist (Name) VALUES (?)`,
+			`INSERT INTO Blacklist (Name, Reason) VALUES (?, ?)`,
 		},
 		{
 			&i.selectBlacklistQ,
@@ -164,8 +165,8 @@ func (i *Index) GetHaves(name string) (haves map[string]struct{}, deps []string,
 	return
 }
 
-func (i *Index) AddBlacklist(name string) error {
-	_, err := i.insertBlacklistQ.Exec(name)
+func (i *Index) AddBlacklist(name, reason string) error {
+	_, err := i.insertBlacklistQ.Exec(name, reason)
 	return err
 }
 
