@@ -34,3 +34,4 @@ queue.db*
 
 /deploy/fetcher/fetcher
 /deploy/drinker/drinker
+/deploy/backpanel/backpanel

@@ -16,6 +16,7 @@ type Index struct {
 	selectQ, latestQ         *sql.Stmt
 
 	insertBlacklistQ, selectBlacklistQ *sql.Stmt
+	updateBlacklistQ, listBlacklistQ   *sql.Stmt
 }
 
 func Open(dataSourceName string) (*Index, error) {
@@ -73,6 +74,14 @@ func Open(dataSourceName string) (*Index, error) {
 		{
 			&i.selectBlacklistQ,
 			`SELECT Whitelisted FROM Blacklist WHERE Name = ?`,
+		},
+		{
+			&i.updateBlacklistQ,
+			`UPDATE Blacklist SET Whitelisted = ? WHERE Name = ?`,
+		},
+		{
+			&i.listBlacklistQ,
+			`SELECT Name, Whitelisted, Reason FROM Blacklist`,
 		},
 	}
 
@@ -167,7 +176,7 @@ func (i *Index) GetHaves(name string) (haves map[string]struct{}, deps []string,
 
 func (i *Index) AddBlacklist(name, reason string) error {
 	_, err := i.insertBlacklistQ.Exec(name, reason)
-	return err
+	return errors.Wrapf(err, "adding %s to blacklist (%s)", name, reason)
 }
 
 type BlacklistState int
@@ -185,12 +194,57 @@ func (i *Index) BlacklistState(name string) (BlacklistState, error) {
 		return Neutral, nil
 	}
 	if err != nil {
-		return 0, err
+		return 0, errors.Wrapf(err, "getting blacklist status of %s", name)
 	}
 	if whitelisted {
 		return Whitelisted, nil
 	}
 	return Blacklisted, nil
+}
+
+type BlacklistEntry struct {
+	Name, Reason string
+	State        BlacklistState
+}
+
+func (i *Index) ListBlacklist() ([]*BlacklistEntry, error) {
+	var res []*BlacklistEntry
+	rows, err := i.listBlacklistQ.Query()
+	if err != nil {
+		return nil, errors.Wrap(err, "listing blacklist")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var e BlacklistEntry
+		var whitelisted bool
+		if err := rows.Scan(&e.Name, &whitelisted, &e.Reason); err != nil {
+			return nil, errors.Wrap(err, "scanning blacklist")
+		}
+		if whitelisted {
+			e.State = Whitelisted
+		} else {
+			e.State = Blacklisted
+		}
+		res = append(res, &e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "end of blacklist listing")
+	}
+	return res, nil
+}
+
+func (i *Index) SetBlacklistState(name string, state BlacklistState) error {
+	var whitelist bool
+	switch state {
+	case Whitelisted:
+		whitelist = true
+	case Blacklisted:
+		whitelist = false
+	default:
+		panic("can't set that state")
+	}
+	_, err := i.updateBlacklistQ.Exec(whitelist, name)
+	return errors.Wrapf(err, "setting blacklist state %s %v", name, state)
 }
 
 func (i *Index) Close() error {

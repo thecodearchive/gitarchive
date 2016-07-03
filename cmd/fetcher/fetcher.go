@@ -72,7 +72,7 @@ func (f *Fetcher) Fetch(name, parent string) error {
 		return err
 	}
 	if blacklistState == index.Blacklisted {
-		log.Println("[-] Skipping blacklisted repository.")
+		log.Println("[-] Skipping blacklisted repository", name)
 		f.exp.Add("blacklisted", 1)
 		return nil
 	}

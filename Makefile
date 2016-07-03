@@ -3,21 +3,23 @@ unexport GOBIN
 IMPORT_PATH      := github.com/thecodearchive/gitarchive
 
 .PHONY: all clean
-all: bin/fetcher bin/drinker bin/clone
+all: bin/fetcher bin/drinker bin/backpanel bin/clone
 clean:
-	rm -rf .GOPATH/bin .GOPATH/pkg deploy/fetcher/fetcher deploy/drinker/drinker
+	rm -rf .GOPATH/bin .GOPATH/pkg deploy/fetcher/fetcher deploy/drinker/drinker deploy/backpanel/backpanel
 
-.PHONY: bin/fetcher bin/drinker bin/clone bin/migrate_cache
+.PHONY: bin/fetcher bin/drinker bin/clone bin/migrate_cache bin/backpanel
 bin/fetcher:
 	@go install -v github.com/thecodearchive/gitarchive/cmd/fetcher
 bin/drinker:
 	@go install -v github.com/thecodearchive/gitarchive/cmd/drinker
+bin/backpanel:
+	@go install -v github.com/thecodearchive/gitarchive/cmd/backpanel
 bin/clone:
 	@go install -v github.com/thecodearchive/gitarchive/cmd/clone
 bin/migrate_cache:
 	@CGO_ENABLED=0 go build -v -o ${@} $(CURDIR)/.GOPATH/src/$(IMPORT_PATH)/cmd/drinker/migrate_cache.go
 
-.PHONY: deploy-fetcher deploy-drinker
+.PHONY: deploy-fetcher deploy-drinker deploy-backpanel
 deploy-fetcher:
 	GOOS=linux GOARCH=amd64 go build -i -o deploy/fetcher/fetcher github.com/thecodearchive/gitarchive/cmd/fetcher
 	docker build -t gcr.io/code-archive/fetcher:latest deploy/fetcher
@@ -26,3 +28,7 @@ deploy-drinker:
 	GOOS=linux GOARCH=amd64 go build -i -o deploy/drinker/drinker github.com/thecodearchive/gitarchive/cmd/drinker
 	docker build -t gcr.io/code-archive/drinker:latest deploy/drinker
 	gcloud docker push gcr.io/code-archive/drinker:latest
+deploy-backpanel:
+	GOOS=linux GOARCH=amd64 go build -i -o deploy/backpanel/backpanel github.com/thecodearchive/gitarchive/cmd/backpanel
+	docker build -t gcr.io/code-archive/backpanel:latest deploy/backpanel
+	gcloud docker push gcr.io/code-archive/backpanel:latest

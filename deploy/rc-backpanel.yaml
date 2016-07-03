@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: backpanel
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: backpanel
+      labels:
+        name: backpanel
+    spec:
+      containers:
+      - name: backpanel
+        image: gcr.io/code-archive/backpanel
+        env:
+        - name: BLACKLIST_BOARD
+          value: "04pbw4Gv"
+        - name: TRELLO_KEY
+          valueFrom:
+            secretKeyRef:
+              name: trello-token
+              key: key
+        - name: TRELLO_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: trello-token
+              key: token
+        - name: INFLUX_ADDR
+          value: "http://influx:8086"
+        - name: DB_ADDR
+          value: "root:toor@tcp(queue:3306)/gitarchive"
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "128Mi"
+          limits:
+            memory: "1Gi"
+
