@@ -51,23 +51,25 @@ func (b *Backpanel) Run() error {
 		}
 		for _, list := range lists {
 			if list.Name == "Whitelist" {
-				whitelist = &list
+				l := list
+				whitelist = &l
 			}
 			if list.Name == "Blacklist" {
-				blacklist = &list
+				l := list
+				blacklist = &l
 			}
 		}
 		if whitelist == nil || blacklist == nil {
 			return errors.New("Lists not found.")
 		}
 
-		tr := make(map[string]*trello.Card)
+		tr := make(map[string]trello.Card)
 		cards, err := board.Cards()
 		if err != nil {
 			return errors.Wrapf(err, "getting board %s cards", b.blacklistID)
 		}
 		for _, card := range cards {
-			tr[card.Name] = &card
+			tr[card.Name] = card
 		}
 
 		ble, err := b.i.ListBlacklist()
