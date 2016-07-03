@@ -19,7 +19,6 @@ package trello
 import (
 	"encoding/json"
 	"net/url"
-	"strconv"
 	"strings"
 )
 
@@ -77,7 +76,6 @@ func (l *List) AddCard(opts Card) (*Card, error) {
 	payload := url.Values{}
 	payload.Set("name", opts.Name)
 	payload.Set("desc", opts.Desc)
-	payload.Set("pos", strconv.Itoa(opts.Pos))
 	payload.Set("due", opts.Due)
 	payload.Set("idList", opts.IdList)
 	payload.Set("idMembers", strings.Join(opts.IdMembers, ","))
