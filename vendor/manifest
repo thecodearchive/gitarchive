@@ -263,14 +263,6 @@
 			"notests": true
 		},
 		{
-			"importpath": "github.com/VojtechVitek/go-trello",
-			"repository": "https://github.com/VojtechVitek/go-trello",
-			"vcs": "git",
-			"revision": "eca42609dcfd7f49362594ac5d966a010aa3736d",
-			"branch": "master",
-			"notests": true
-		},
-		{
 			"importpath": "github.com/boltdb/bolt",
 			"repository": "https://github.com/boltdb/bolt",
 			"vcs": "git",
@@ -499,6 +491,14 @@
 			"repository": "https://github.com/pkg/errors",
 			"vcs": "git",
 			"revision": "0bc61eb85b3cab5d83c9432263916d5df58d9855",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/thecodearchive/go-trello",
+			"repository": "https://github.com/thecodearchive/go-trello",
+			"vcs": "git",
+			"revision": "c4f2b91f9285d0eb73c22e00ad72ef8f9453428e",
 			"branch": "master",
 			"notests": true
 		},
