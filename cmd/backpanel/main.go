@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/VojtechVitek/go-trello"
 	"github.com/thecodearchive/gitarchive/index"
 	"github.com/thecodearchive/gitarchive/metrics"
+	"github.com/thecodearchive/go-trello"
 )
 
 func main() {

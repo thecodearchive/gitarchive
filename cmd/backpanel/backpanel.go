@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/VojtechVitek/go-trello"
 	"github.com/pkg/errors"
 	"github.com/thecodearchive/gitarchive/index"
+	"github.com/thecodearchive/go-trello"
 )
 
 type Backpanel struct {
@@ -32,9 +32,15 @@ type Label struct {
 }
 
 var (
-	labelGH     = Label{"green", "github.com"}
-	labelTooBig = Label{"blue", "TOO BIG"}
-	labelCrash  = Label{"black", "BLACK"}
+	// Hardcoded because I'm awful.
+	// curl "https://trello.com/1/boards/04pbw4Gv/labels?value=&key=$key&token=$token"
+	labelGH        = "5778e0ee84e677fd365e136e"
+	labelFork      = "5778e8c51040134fc3126996"
+	labelTooBig    = "5778e0ee84e677fd365e136d"
+	labelCrash     = "5778e0ee84e677fd365e136c"
+	label10Stars   = "5778e0ee84e677fd365e1369"
+	label100Stars  = "5778e0ee84e677fd365e136a"
+	label1000Stars = "5778e0ee84e677fd365e136b"
 )
 
 func (b *Backpanel) Run() error {
@@ -83,11 +89,11 @@ func (b *Backpanel) Run() error {
 				// New line in the database, add card.
 				card := trello.Card{Name: n}
 				card.Desc = "https://github.com/" + n
-				card.Labels = append(card.Labels, labelGH)
+				card.IdLabels = append(card.IdLabels, labelGH)
 				if e.Reason == "Too big." {
-					card.Labels = append(card.Labels, labelTooBig)
+					card.IdLabels = append(card.IdLabels, labelTooBig)
 				} else {
-					card.Labels = append(card.Labels, labelCrash)
+					card.IdLabels = append(card.IdLabels, labelCrash)
 					card.Desc += "\n\n" + e.Reason
 				}
 				list := blacklist
