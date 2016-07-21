@@ -41,7 +41,7 @@ func Open(dataSourceName string) (*Index, error) {
 	}
 
 	query = `CREATE TABLE IF NOT EXISTS Blacklist (
-		Name VARCHAR(255) NOT NULL, INDEX (Name),
+		Name VARCHAR(255) NOT NULL UNIQUE KEY,
 		Whitelisted BOOLEAN NOT NULL DEFAULT 0, Reason TEXT)`
 	if _, err = db.Exec(query); err != nil {
 		return nil, errors.Wrap(err, "failed to create Blacklist")
