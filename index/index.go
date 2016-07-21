@@ -15,6 +15,8 @@ type Index struct {
 	insertFetchQ, insertDepQ *sql.Stmt
 	selectQ, latestQ         *sql.Stmt
 
+	packrefsQ *sql.Stmt
+
 	insertBlacklistQ, selectBlacklistQ *sql.Stmt
 	updateBlacklistQ, listBlacklistQ   *sql.Stmt
 }
@@ -66,6 +68,10 @@ func Open(dataSourceName string) (*Index, error) {
 		{
 			&i.selectQ,
 			`SELECT Parent, Refs, PackID FROM Fetches WHERE Name = ? ORDER BY Timestamp DESC LIMIT 1`,
+		},
+		{
+			&i.packrefsQ,
+			`SELECT Parent, PackRef FROM Fetches WHERE Name = ?`, // TODO fetch parents' refs too.
 		},
 		{
 			&i.insertBlacklistQ,
@@ -169,6 +175,46 @@ func (i *Index) GetHaves(name string) (haves map[string]struct{}, deps []string,
 			haves[ref] = struct{}{}
 		}
 		deps = append(deps, packID)
+	}
+
+	return
+}
+
+func (i *Index) GetPackrefs(name string) (packfiles []string, err error) {
+	var parent string
+	var rows *sql.Rows
+	rows, err = i.packrefsQ.Query(name)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var packfile string
+		if err = rows.Scan(&parent, &packfile); err != nil {
+			return
+		}
+		packfiles = append(packfiles, packfile)
+	}
+	if err = rows.Err(); err != nil {
+		return
+	}
+
+	if parent != "" {
+		rows, err = i.packrefsQ.Query(parent)
+		if err != nil {
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var packfile string
+			if err = rows.Scan(&parent, &packfile); err != nil {
+				return
+			}
+			packfiles = append(packfiles, packfile)
+		}
+		if err = rows.Err(); err != nil {
+			return
+		}
 	}
 
 	return
