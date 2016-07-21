@@ -72,7 +72,15 @@ func (b *Backpanel) Run() error {
 		tr := make(map[string]trello.Card)
 		cards, err := board.Cards()
 		if err != nil {
-			return errors.Wrapf(err, "getting board %s cards", b.blacklistID)
+			// This is quite large and sometimes the fetch fails with io.ErrUnexpectedEOF.
+			// However, the trello package opaquely wraps that so we can't special case it.
+			// Just sleep for a bit longer instead of crashing ¯\_(ツ)_/¯.
+			// TODO Backoff
+			log.Printf("[-] Error getting board %s cards: %v", b.blacklistID, err)
+			if !interruptableSleep(2 * b.pause) {
+				return nil
+			}
+			continue
 		}
 		for _, card := range cards {
 			tr[card.Name] = card

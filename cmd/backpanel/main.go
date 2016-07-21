@@ -52,6 +52,7 @@ func main() {
 		b.Stop()
 	}()
 
+	log.Println("[ ] Running backpanel loop...")
 	fatalIfErr(b.Run())
 }
 
