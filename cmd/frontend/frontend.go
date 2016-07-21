@@ -4,8 +4,12 @@ import (
 	"expvar"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/thecodearchive/gitarchive/index"
@@ -22,6 +26,7 @@ type Frontend struct {
 const capabilities = "thin-pack side-band side-band-64k ofs-delta shallow agent=github.com/thecodearchive/gitarchive"
 
 var testRefs = map[string]string{
+	"HEAD":              "7ec915048d870617a6d497294923bb2262e0659e",
 	"refs/heads/master": "7ec915048d870617a6d497294923bb2262e0659e",
 }
 
@@ -39,11 +44,22 @@ func (f *Frontend) Handle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unrecognized repository", http.StatusNotFound)
 		return
 	}
-	if r.Method != "GET" {
+	repo := strings.Join(parts[1:4], "/")
+	timestamp := parts[0]
+
+	if r.Method == "GET" {
+		f.FetchRefs(w, r, timestamp, repo, parts[4])
+	} else if r.Method == "POST" {
+		f.PostObjects(w, r, timestamp, repo, parts[4])
+	} else {
 		http.Error(w, "Only GET supported", http.StatusNotImplemented)
-		return
 	}
-	if parts[4] != "info/refs" {
+
+	return
+}
+
+func (f *Frontend) FetchRefs(w http.ResponseWriter, r *http.Request, timestamp, repo, extra string) {
+	if extra != "info/refs" {
 		http.Error(w, "Unrecognized path", http.StatusNotFound)
 		return
 	}
@@ -70,9 +86,67 @@ func (f *Frontend) Handle(w http.ResponseWriter, r *http.Request) {
 	log.Println("GET worked")
 }
 
+func (f *Frontend) PostObjects(w http.ResponseWriter, r *http.Request, timestamp, repo, extra string) {
+	if extra != "git-upload-pack" {
+		http.Error(w, "Unrecognized path", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-git-upload-pack-result")
+
+	gitR, cmd, err := runGitUploadPack(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, err = io.Copy(w, io.TeeReader(gitR, os.Stdout))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	cmd.Wait()
+}
+
 func writePackLine(w io.Writer, line string) {
 	line = line + "\n"
 	fmt.Fprintf(w, "%04x%s", len(line)+4, line)
+}
+
+func runGitUploadPack(r io.Reader) (io.Reader, *exec.Cmd, error) {
+	cmd := exec.Command("git-upload-pack", "/testrepo")
+	cmd.Stdin = r
+	pr, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
+	}
+
+	// Discard the advertisement
+	for {
+		pktLenHex := make([]byte, 4)
+		if _, err := io.ReadFull(pr, pktLenHex); err == io.EOF {
+			return nil, nil, io.ErrUnexpectedEOF
+		} else if err != nil {
+			return nil, nil, err
+		}
+		pktLen, err := strconv.ParseUint(string(pktLenHex), 16, 16)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// "0000" marker
+		if pktLen == 0 {
+			break
+		}
+
+		if _, err := io.CopyN(ioutil.Discard, pr, int64(pktLen-4)); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	return pr, cmd, nil
 }
 
 func (f *Frontend) Run() error {
