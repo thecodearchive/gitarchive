@@ -13,6 +13,8 @@ spec:
       containers:
       - name: frontend
         image: gcr.io/code-archive/frontend
+        ports:
+        - containerPort: 80
         volumeMounts:
         - name: gcs-keys
           mountPath: /gcs-keys
