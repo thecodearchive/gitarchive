@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: frontend
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: frontend
+      labels:
+        name: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: gcr.io/code-archive/frontend
+        volumeMounts:
+        - name: gcs-keys
+          mountPath: /gcs-keys
+          readOnly: true
+        env:
+        - name: INFLUX_ADDR
+          value: "http://influx:8086"
+        - name: DB_ADDR
+          value: "root:toor@tcp(queue:3306)/gitarchive"
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/gcs-keys/fetcher-gcs-key.json"
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "128Mi"
+          limits:
+            memory: "1Gi"
+      volumes:
+      - name: gcs-keys
+        secret:
+          secretName: gcs-keys
+

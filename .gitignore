@@ -32,6 +32,7 @@ queue.db*
 /.GOPATH/pkg
 /.GOPATH/bin
 
+/deploy/frontend/frontend
 /deploy/fetcher/fetcher
 /deploy/drinker/drinker
 /deploy/backpanel/backpanel
