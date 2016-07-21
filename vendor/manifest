@@ -498,7 +498,7 @@
 			"importpath": "github.com/thecodearchive/go-trello",
 			"repository": "https://github.com/thecodearchive/go-trello",
 			"vcs": "git",
-			"revision": "017affeb8cbff8af6aec029945fb7710363fcb5f",
+			"revision": "fd145990c41c9fd0bfef7871193b2f2536f93afa",
 			"branch": "master",
 			"notests": true
 		},

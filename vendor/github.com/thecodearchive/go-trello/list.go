@@ -79,6 +79,7 @@ func (l *List) AddCard(opts Card) (*Card, error) {
 	payload.Set("due", opts.Due)
 	payload.Set("idList", opts.IdList)
 	payload.Set("idMembers", strings.Join(opts.IdMembers, ","))
+	payload.Set("idLabels", strings.Join(opts.IdLabels, ","))
 
 	body, err := l.client.Post("/cards", payload)
 	if err != nil {
