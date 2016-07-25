@@ -17,7 +17,6 @@ import (
 	"github.com/thecodearchive/gitarchive/index"
 	"github.com/thecodearchive/gitarchive/metrics"
 	"github.com/thecodearchive/gitarchive/queue"
-	"github.com/thecodearchive/gitarchive/weekmap"
 )
 
 func main() {
@@ -25,12 +24,9 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	schedule, err := weekmap.Parse(MustGetenv("SCHEDULE"))
-	fatalIfErr(err)
-
 	exp := expvar.NewMap("fetcher")
 
-	err = metrics.StartInfluxExport(MustGetenv("INFLUX_ADDR"), "fetcher", exp)
+	err := metrics.StartInfluxExport(MustGetenv("INFLUX_ADDR"), "fetcher", exp)
 	fatalIfErr(err)
 
 	client, err := storage.NewClient(context.Background())
@@ -58,7 +54,7 @@ func main() {
 		fatalIfErr(i.Close())
 	}()
 
-	f := &Fetcher{exp: exp, q: q, i: i, bucket: bucket, schedule: schedule}
+	f := &Fetcher{exp: exp, q: q, i: i, bucket: bucket}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
