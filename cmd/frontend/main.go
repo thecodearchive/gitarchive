@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"expvar"
 	"fmt"
 	"log"
@@ -10,6 +11,8 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+
+	_ "github.com/go-sql-driver/mysql"
 
 	"golang.org/x/net/context"
 	"google.golang.org/cloud/storage"
@@ -33,13 +36,17 @@ func main() {
 
 	bucket := client.Bucket(OptGetenv("FETCHER_BUCKET_NAME", "packfiles"))
 
-	log.Println("[ ] Opening index...")
-	i, err := index.Open(MustGetenv("DB_ADDR"))
+	log.Println("[ ] Opening db connection...")
+	db, err := sql.Open("mysql", MustGetenv("DB_ADDR")+"?parseTime=true")
 	fatalIfErr(err)
 	defer func() {
-		log.Println("[ ] Closing index...")
-		fatalIfErr(i.Close())
+		log.Println("[ ] Closing db connection...")
+		fatalIfErr(db.Close())
 	}()
+
+	log.Println("[ ] Opening index...")
+	i, err := index.Open(db)
+	fatalIfErr(err)
 
 	f := &Frontend{exp: exp, i: i, bucket: bucket}
 

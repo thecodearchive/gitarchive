@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/pkg/errors"
 )
 
@@ -21,19 +20,15 @@ type Index struct {
 	updateBlacklistQ, listBlacklistQ   *sql.Stmt
 }
 
-func Open(dataSourceName string) (*Index, error) {
-	db, err := sql.Open("mysql", dataSourceName+"?parseTime=true")
-	if err != nil {
-		return nil, err
-	}
-
+func Open(db *sql.DB) (*Index, error) {
 	i := &Index{db: db}
 
 	query := `CREATE TABLE IF NOT EXISTS Fetches (
 		Name VARCHAR(255) NOT NULL, INDEX (Name), Parent VARCHAR(255),
 		Timestamp DATETIME, Refs JSON,
 		PackID BIGINT UNIQUE KEY AUTO_INCREMENT, PackRef VARCHAR(255))`
-	if _, err = db.Exec(query); err != nil {
+	_, err := db.Exec(query)
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Fetches")
 	}
 
@@ -291,8 +286,4 @@ func (i *Index) SetBlacklistState(name string, state BlacklistState) error {
 	}
 	_, err := i.updateBlacklistQ.Exec(whitelist, name)
 	return errors.Wrapf(err, "setting blacklist state %s %v", name, state)
-}
-
-func (i *Index) Close() error {
-	return i.db.Close()
 }

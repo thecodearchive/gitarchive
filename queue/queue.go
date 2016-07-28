@@ -3,8 +3,6 @@ package queue
 import (
 	"database/sql"
 	"fmt"
-
-	_ "github.com/go-sql-driver/mysql"
 )
 
 // Queue implements a simple de-duplicating queue that assumes that when a
@@ -24,17 +22,13 @@ type Queue struct {
 	countQ  *sql.Stmt
 }
 
-func Open(dataSourceName string) (*Queue, error) {
-	db, err := sql.Open("mysql", dataSourceName)
-	if err != nil {
-		return nil, err
-	}
-
+func Open(db *sql.DB) (*Queue, error) {
 	q := &Queue{db: db}
 
 	query := `CREATE TABLE IF NOT EXISTS Queue (
 		ID INTEGER PRIMARY KEY AUTO_INCREMENT, Name VARCHAR(256) UNIQUE NOT NULL, Parent VARCHAR(256))`
-	if _, err = db.Exec(query); err != nil {
+	_, err := db.Exec(query)
+	if err != nil {
 		return nil, fmt.Errorf("table creation failed: %s", err)
 	}
 
@@ -95,9 +89,4 @@ func (q *Queue) Len() (int, error) {
 	var res int
 	err := q.countQ.QueryRow().Scan(&res)
 	return res, err
-}
-
-func (q *Queue) Close() error {
-	// Do we need to close the Stmt here?
-	return q.db.Close()
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"expvar"
 	"log"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/thecodearchive/gitarchive/index"
 	"github.com/thecodearchive/gitarchive/metrics"
@@ -34,13 +37,17 @@ func main() {
 
 	blacklistID := MustGetenv("BLACKLIST_BOARD")
 
-	log.Println("[ ] Opening index...")
-	i, err := index.Open(MustGetenv("DB_ADDR"))
+	log.Println("[ ] Opening db connection...")
+	db, err := sql.Open("mysql", MustGetenv("DB_ADDR")+"?parseTime=true")
 	fatalIfErr(err)
 	defer func() {
-		log.Println("[ ] Closing index...")
-		fatalIfErr(i.Close())
+		log.Println("[ ] Closing db connection...")
+		fatalIfErr(db.Close())
 	}()
+
+	log.Println("[ ] Opening index...")
+	i, err := index.Open(db)
+	fatalIfErr(err)
 
 	b := &Backpanel{exp: exp, c: cl, i: i, pause: pause, blacklistID: blacklistID}
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"expvar"
 	"fmt"
 	"log"
@@ -10,6 +11,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/boltdb/bolt"
 	"github.com/thecodearchive/gitarchive/github"
@@ -64,25 +67,24 @@ func main() {
 	err = metrics.StartInfluxExport(MustGetenv("INFLUX_ADDR"), "drinker", exp)
 	fatalIfErr(err)
 
-	log.Println("[ ] Opening queue...")
-	q, err := queue.Open(MustGetenv("DB_ADDR"))
+	log.Println("[ ] Opening db connection...")
+	sqldb, err := sql.Open("mysql", MustGetenv("DB_ADDR")+"?parseTime=true")
 	fatalIfErr(err)
 	defer func() {
-		log.Println("[ ] Closing queue...")
-		if err := q.Close(); err != nil {
-			log.Println(err)
-		}
+		log.Println("[ ] Closing db connection...")
+		fatalIfErr(sqldb.Close())
 	}()
+
+	log.Println("[ ] Opening queue...")
+	q, err := queue.Open(sqldb)
+	fatalIfErr(err)
 
 	log.Println("[ ] Opening index...")
-	i, err := index.Open(MustGetenv("DB_ADDR"))
+	i, err := index.Open(sqldb)
 	fatalIfErr(err)
-	defer func() {
-		log.Println("[ ] Closing index...")
-		fatalIfErr(i.Close())
-	}()
 
-	st := github.NewStarTracker(db, MustGetenv("GITHUB_TOKEN"))
+	st, err := github.NewStarTracker(sqldb, MustGetenv("GITHUB_TOKEN"))
+	fatalIfErr(err)
 	exp.Set("github", st.Expvar())
 
 	// Set NoSync since we don't care about losing data since the last sync,
