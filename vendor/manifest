@@ -263,6 +263,14 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/DATA-DOG/go-sqlmock",
+			"repository": "https://github.com/DATA-DOG/go-sqlmock",
+			"vcs": "git",
+			"revision": "05f39e9110c0ed1ec1834d06004693026a4d24f1",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/boltdb/bolt",
 			"repository": "https://github.com/boltdb/bolt",
 			"vcs": "git",
@@ -460,6 +468,14 @@
 			"revision": "551cb61d9eb04e70f693786a43b56ba9d9c862ec",
 			"branch": "master",
 			"path": "pkg/escape",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/kisielk/sqlstruct",
+			"repository": "https://github.com/kisielk/sqlstruct",
+			"vcs": "git",
+			"revision": "648daed35d49dac24a4bff253b190a80da3ab6a5",
+			"branch": "master",
 			"notests": true
 		},
 		{

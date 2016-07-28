@@ -1,12 +1,13 @@
 package github
 
 import (
+	"database/sql"
 	"errors"
 	"expvar"
+	"fmt"
 	"strings"
 	"time"
 
-	"github.com/boltdb/bolt"
 	"github.com/google/go-github/github"
 	"golang.org/x/oauth2"
 )
@@ -20,37 +21,67 @@ import (
 // it assumes WatchEvents and Gets are submited sequentially anyway. However, it
 // is fully idempotent.
 type StarTracker struct {
-	db *bolt.DB
+	db *sql.DB
 	gh *github.Client
 
 	exp          *expvar.Map
 	expRateLeft  *expvar.Int
 	expRateReset *expvar.String
 
+	setR, getR, numRows *sql.Stmt
+
 	panicIfNetwork bool // used for testing
 }
 
-//go:generate msgp -io=false -tests=false -unexported
-//msgp:ignore StarTracker
-
 type Repo struct {
+	Name        string
 	Stars       int
 	Parent      string
 	LastUpdated time.Time
 }
 
-func NewStarTracker(db *bolt.DB, gitHubToken string) *StarTracker {
+func NewStarTracker(db *sql.DB, gitHubToken string) (*StarTracker, error) {
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: gitHubToken},
 	)
 	tc := oauth2.NewClient(oauth2.NoContext, ts)
-
-	db.Update(func(tx *bolt.Tx) error {
-		tx.CreateBucketIfNotExists([]byte("StarTracker"))
-		return nil
-	})
-
 	s := &StarTracker{db: db, gh: github.NewClient(tc)}
+
+	query := `CREATE TABLE IF NOT EXISTS StarTracker (
+		Name VARCHAR(255) NOT NULL PRIMARY KEY, Stars INT,
+		Parent VARCHAR(255), LastUpdated DATETIME)`
+	if _, err := db.Exec(query); err != nil {
+		return nil, fmt.Errorf("couldn't create stars table: %v", err)
+	}
+
+	// Prepare SQL Queries
+	prepStmts := []struct {
+		name **sql.Stmt
+		sql  string
+	}{
+		{
+			&s.setR,
+			`INSERT INTO StarTracker(Name, Stars, Parent, LastUpdated) VALUES (?, ?, ?, ?)
+			ON DUPLICATE KEY UPDATE Name = Values(Name), Stars = Values(Stars), Parent = Values(Parent), LastUpdated = Values(LastUpdated)`,
+		},
+		{
+			&s.getR,
+			`SELECT Name, Stars, Parent, LastUpdated FROM StarTracker WHERE Name = ?`,
+		},
+		{
+			&s.numRows,
+			`SELECT COUNT(*) FROM StarTracker`,
+		},
+	}
+
+	for _, prepStmt := range prepStmts {
+		stmt, err := db.Prepare(prepStmt.sql)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare %s: %v'", prepStmt.sql, err)
+		}
+		*prepStmt.name = stmt
+	}
+
 	s.gh.UserAgent = "github.com/thecodearchive/gitarchive/github StarTracker"
 
 	s.exp = new(expvar.Map).Init()
@@ -60,39 +91,27 @@ func NewStarTracker(db *bolt.DB, gitHubToken string) *StarTracker {
 	s.exp.Set("ratereset", s.expRateReset)
 	s.exp.Set("cachesize", expvar.Func(func() interface{} {
 		var n int
-		s.db.View(func(tx *bolt.Tx) error {
-			n = tx.Bucket([]byte("StarTracker")).Stats().KeyN
-			return nil
-		})
+		s.numRows.QueryRow().Scan(&n)
 		return n
 	}))
 
-	return s
+	return s, nil
 }
 
 func (s *StarTracker) getRepo(key string) (r *Repo, err error) {
-	err = s.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("StarTracker"))
-		v := b.Get([]byte(key))
-		if v == nil {
-			return nil
-		}
-		r = &Repo{}
-		_, err := r.UnmarshalMsg(v)
-		return err
-	})
+	r = &Repo{}
+	err = s.getR.QueryRow(key).Scan(&r.Name, &r.Stars, &r.Parent, &r.LastUpdated)
+	if err == sql.ErrNoRows {
+		r = nil
+		err = nil
+	}
+
 	return
 }
 
 func (s *StarTracker) setRepo(key string, r *Repo) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("StarTracker"))
-		v, err := r.MarshalMsg(nil)
-		if err != nil {
-			return err
-		}
-		return b.Put([]byte(key), v)
-	})
+	_, err := s.setR.Exec(r.Name, r.Stars, r.Parent, r.LastUpdated)
+	return err
 }
 
 func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
@@ -100,6 +119,7 @@ func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 	if err != nil {
 		return 0, "", err
 	}
+
 	if rr != nil {
 		s.exp.Add("cachehits", 1)
 		return rr.Stars, rr.Parent, nil
@@ -131,6 +151,7 @@ func (s *StarTracker) Get(name string) (stars int, parent string, err error) {
 	}
 
 	return *r.StargazersCount, parent, s.setRepo(name, &Repo{
+		Name:        name,
 		Stars:       *r.StargazersCount,
 		LastUpdated: t,
 		Parent:      parent,
@@ -147,10 +168,11 @@ func (s *StarTracker) WatchEvent(name string, created time.Time) error {
 	}
 
 	if created.After(repo.LastUpdated) {
-		repo.Stars += 1
+		repo.Stars++
 		repo.LastUpdated = created
+		return s.setRepo(name, repo)
 	}
-	return s.setRepo(name, repo)
+	return nil
 }
 
 func (s *StarTracker) CreateEvent(name, parent string, created time.Time) error {
@@ -158,6 +180,7 @@ func (s *StarTracker) CreateEvent(name, parent string, created time.Time) error 
 		return err // maintain idempotency
 	}
 	return s.setRepo(name, &Repo{
+		Name:        name,
 		Stars:       0,
 		LastUpdated: created,
 		Parent:      parent,
